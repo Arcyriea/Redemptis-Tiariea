@@ -3,8 +3,7 @@ import { Ship } from '../entities/Ship';
 import { Camera } from '../utils/Camera';
 import { ObjectPool } from './ObjectPool';
 import { TaskManager } from '../tasks/TaskManager';
-import { UIManager } from '../ui/UIManager';
-import { MiniMap } from '../ui/MiniMap';
+import { UIManager, MiniMap } from '../ui/UIManager';
 import { SoundManager } from '../audio/SoundManager';
 
 export class Game {

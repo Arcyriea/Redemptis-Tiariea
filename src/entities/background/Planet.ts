@@ -1,29 +1,8 @@
 import Phaser from 'phaser';
+import fragmentShader from '../../shaders/planets.glsl?raw';
 
 export class PlanetShader extends Phaser.GameObjects.Shader {
     constructor(scene: Phaser.Scene, x: number, y: number, width: number, height: number) {
-        const fragmentShader = `
-precision mediump float;
-uniform sampler2D uMainSampler;
-varying vec2 outTexCoord;
-uniform float time;
-uniform vec2 uResolution;
-
-void main() {
-    vec2 p = (gl_FragCoord.xy / uResolution.xy) * 2.0 - 1.0;
-    float r = dot(p, p);
-    if (r > 1.0) {
-        discard;
-    }
-    float z = sqrt(1.0 - r);
-    float pi = 3.14159265359;
-    float lat = asin(p.y);
-    float lon = atan(p.x, z);
-    vec2 uv = vec2((lon / (2.0 * pi)) + 0.5 + (time * 0.05), (lat / pi) + 0.5);
-    gl_FragColor = texture2D(uMainSampler, uv);
-}
-        `;
-
         super(scene, x, y, width, height, fragmentShader);
 
         this.setUniform('time', 0);
