@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Game } from './core/Game';
 import { MiniMap } from './ui/MiniMap';
+import { PlanetBackground, PlanetShader } from './entities/background/Planet';
 
 // Scene to handle loading and generating dummy textures
 class BootScene extends Phaser.Scene {
@@ -14,6 +15,11 @@ class BootScene extends Phaser.Scene {
     }
 
     create() {
+        // Register custom planet shader pipeline
+        // In Phaser 4, we use the Shader Game Object directly, so custom pipelines
+        // are often unnecessary for simple shaders.
+        // We will remove the manual pipeline registration.
+
         this.scene.start('GameScene');
     }
 
@@ -57,6 +63,18 @@ class BootScene extends Phaser.Scene {
         enemy.lineStyle(2, 0xffffff, 1);
         enemy.strokeRect(0, 0, 40, 40);
         enemy.generateTexture('enemy-core', 40, 40);
+
+        // 6. Planet Texture (Procedural gradient texture for mapping onto the sphere shader)
+        const planetMap = this.make.graphics({ x: 0, y: 0, add: false });
+        planetMap.fillStyle(0x1a2b3c, 1);
+        planetMap.fillRect(0, 0, 512, 256);
+        // Draw some fake continents/features
+        planetMap.fillStyle(0x2e8b57, 1);
+        planetMap.fillCircle(150, 100, 60);
+        planetMap.fillCircle(350, 160, 80);
+        planetMap.fillStyle(0xcd853f, 1);
+        planetMap.fillCircle(250, 80, 40);
+        planetMap.generateTexture('planetMap', 512, 256);
     }
 }
 
@@ -71,10 +89,11 @@ class GameScene extends Phaser.Scene {
         left: Phaser.Input.Keyboard.Key;
         right: Phaser.Input.Keyboard.Key;
     };
-    private fireKey!: Phaser.Input.Keyboard.Key;
+    private nextFireTime = 0;
     private shiftKey!: Phaser.Input.Keyboard.Key;
     private projectiles!: Phaser.Physics.Arcade.Group;
     private infoText!: Phaser.GameObjects.Text;
+    private planetBackground!: PlanetBackground;
 
     constructor() {
         super('GameScene');
@@ -84,6 +103,20 @@ class GameScene extends Phaser.Scene {
     create() {
         // Background Grid
         this.add.grid(0, 0, 2000, 2000, 50, 50, 0x111111).setOrigin(0);
+
+        // Planet Background System
+        this.planetBackground = new PlanetBackground(this, 0, 0);
+        this.planetBackground.addPlanet({
+            x: 200,
+            y: 150,
+            radius: 100,
+            texture: 'planetMap',
+            shader: 'PlanetShader',
+            depth: -10,
+            rotationSpeed: 0.1,
+            parallaxX: 0.05,
+            parallaxY: 0.05
+        });
 
         // Physics group for projectiles (Integrated Physics)
         this.projectiles = this.physics.add.group();
@@ -117,14 +150,13 @@ class GameScene extends Phaser.Scene {
             left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
             right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
         };
-        this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
         // Camera
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
         // UI Text
-        this.infoText = this.add.text(10, 10, 'Arrows/WASD: Move/Turn | Hold SHIFT: Aim with Mouse & Strafe | Space: Fire', { color: '#ffffff' }).setScrollFactor(0);
+        this.infoText = this.add.text(10, 10, 'Arrows/WASD: Move/Turn | Hold SHIFT: Aim with Mouse & Strafe | Hold Left Mouse: Fire', { color: '#ffffff' }).setScrollFactor(0);
 
         // ShellCore-style MiniMap HUD (Fixed on top-right)
         const minimap = new MiniMap(this, 640, 10);
@@ -163,11 +195,12 @@ class GameScene extends Phaser.Scene {
                 this.player.rotation += Math.sign(angleDiff) * maxStep;
             }
         } else {
-            // Classic keyboard steering
+            // Classic keyboard steering (frame-rate independent rotation speed)
+            const turnSpeedDeg = rotateSpeed * 60 * (delta / 1000);
             if (isLeft) {
-                this.player.angle -= rotateSpeed;
+                this.player.angle -= turnSpeedDeg;
             } else if (isRight) {
-                this.player.angle += rotateSpeed;
+                this.player.angle += turnSpeedDeg;
             }
         }
 
@@ -216,9 +249,15 @@ class GameScene extends Phaser.Scene {
         // Limit top speed
         body.setMaxVelocity(maxSpeed);
 
-        // Firing with integrated physics
-        if (Phaser.Input.Keyboard.JustDown(this.fireKey)) {
+        // Fire repeatedly while the left mouse button is held.
+        if (this.input.activePointer.leftButtonDown() && time >= this.nextFireTime) {
             this.fireProjectile();
+            this.nextFireTime = time + 150;
+        }
+
+        // Update Planet Background positions & Parallax
+        if (this.planetBackground) {
+            this.planetBackground.update(delta);
         }
 
         // Run engine update logic (reverse-engineered from AS3)
