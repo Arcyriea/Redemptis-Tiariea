@@ -1,35 +1,42 @@
 precision mediump float;
 
-uniform sampler2D uMainSampler; // This will hold your flat 2D map texture
+uniform sampler2D uMainSampler;
+uniform float time;
+
 varying vec2 outTexCoord;
 
-uniform float time;
-uniform vec2 uResolution;
-
 void main() {
-    // Normalize pixel coordinates from [-1, -1] to [1, 1]
-    vec2 p = (gl_FragCoord.xy / uResolution.xy) * 2.0 - 1.0;
-    
-    // Calculate distance from the center of the screen
+    const float PI = 3.14159265359;
+
+    // Local coordinates, centered on this planet's quad.
+    // Flip Y so the top of the quad corresponds to north.
+    vec2 p = vec2(
+        outTexCoord.x * 2.0 - 1.0,
+        1.0 - outTexCoord.y * 2.0
+    );
+
     float r = dot(p, p);
-    
-    // Discard pixels outside the sphere's radius (r > 1.0)
+
+    // Discard pixels outside the circular planet.
     if (r > 1.0) {
-        discard; 
+        discard;
     }
-    
-    // Calculate the 3D Z-depth of the sphere's surface at this point
-    float z = sqrt(1.0 - r);
-    
-    // Calculate Spherical Coordinates (Latitude and Longitude)
-    float pi = 3.14159265359;
-    float lat = asin(p.y);
+
+    // Reconstruct the visible hemisphere.
+    float z = sqrt(max(0.0, 1.0 - r));
+
+    // Convert the sphere surface to longitude and latitude.
+    float lat = asin(clamp(p.y, -1.0, 1.0));
     float lon = atan(p.x, z);
-    
-    // Map spherical coordinates back to a flat [0, 1] 2D texture coordinate
-    // The "time * 0.05" creates a constant rotation effect across the flat map
-    vec2 uv = vec2((lon / (2.0 * pi)) + 0.5 + (time * 0.05), (lat / pi) + 0.5);
-    
-    // Fetch the color from your flat map texture
+
+    // Sample the equirectangular planet map.
+    vec2 uv = vec2(
+        lon / (2.0 * PI) + 0.5 + time * 0.05,
+        0.5 - lat / PI
+    );
+
+    // Wrap longitude to keep rotation seamless.
+    uv.x = fract(uv.x);
+
     gl_FragColor = texture2D(uMainSampler, uv);
 }

@@ -2,18 +2,34 @@ import Phaser from 'phaser';
 import fragmentShader from '../../shaders/planets.glsl?raw';
 
 export class PlanetShader extends Phaser.GameObjects.Shader {
-    constructor(scene: Phaser.Scene, x: number, y: number, width: number, height: number, textureKey?: string) {
-        super(scene, fragmentShader, x, y, width, height, textureKey ? [textureKey] : undefined);
+    constructor(
+        scene: Phaser.Scene,
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        textureKey?: string
+    ) {
+        const config = {
+            name: 'planetSphere',
+            fragmentSource: fragmentShader,
+            initialUniforms: {
+                uMainSampler: 0
+            },
+            setupUniforms: (setUniform: (name: string, value: number) => void) => {
+                setUniform('time', scene.time.now * 0.001);
+            }
+        };
 
-        this.setUniform('time', 0);
-        this.setUniform('uResolution', [width, height]);
-        if (textureKey) {
-            this.setUniform('uMainSampler', 0);
-        }
-    }
-
-    preUpdate(time: number, delta: number) {
-        this.setUniform('time', time * 0.001);
+        super(
+            scene,
+            config,
+            x,
+            y,
+            width,
+            height,
+            textureKey ? [textureKey] : []
+        );
     }
 }
 
