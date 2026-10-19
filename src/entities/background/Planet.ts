@@ -2,11 +2,14 @@ import Phaser from 'phaser';
 import fragmentShader from '../../shaders/planets.glsl?raw';
 
 export class PlanetShader extends Phaser.GameObjects.Shader {
-    constructor(scene: Phaser.Scene, x: number, y: number, width: number, height: number) {
-        super(scene, x, y, width, height, fragmentShader);
+    constructor(scene: Phaser.Scene, x: number, y: number, width: number, height: number, textureKey?: string) {
+        super(scene, fragmentShader, x, y, width, height, textureKey ? [textureKey] : undefined);
 
         this.setUniform('time', 0);
         this.setUniform('uResolution', [width, height]);
+        if (textureKey) {
+            this.setUniform('uMainSampler', 0);
+        }
     }
 
     preUpdate(time: number, delta: number) {
@@ -48,10 +51,7 @@ export class PlanetBackground {
         const texture = options.texture ?? 'planetMap';
 
         // In Phaser 4, we use the Shader Game Object directly
-        const planet = new PlanetShader(this.scene, options.x ?? 0, options.y ?? 0, radius * 2, radius * 2);
-
-        // Apply the texture as a uniform
-        planet.setUniform('uMainSampler', texture);
+        const planet = new PlanetShader(this.scene, options.x ?? 0, options.y ?? 0, radius * 2, radius * 2, texture);
 
         planet.setAlpha(options.alpha ?? 1);
 

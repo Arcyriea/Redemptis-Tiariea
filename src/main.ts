@@ -10,6 +10,10 @@ class BootScene extends Phaser.Scene {
     }
 
     preload() {
+        // Load actual planet textures from public folder
+        this.load.image('planetMap111', '/assets/Planets/Map-111.png');
+        this.load.image('planetMap122', '/assets/Planets/Map-122.png');
+
         // Generate dummy textures using graphics
         this.createDummyTextures();
     }
@@ -64,17 +68,9 @@ class BootScene extends Phaser.Scene {
         enemy.strokeRect(0, 0, 40, 40);
         enemy.generateTexture('enemy-core', 40, 40);
 
-        // 6. Planet Texture (Procedural gradient texture for mapping onto the sphere shader)
-        const planetMap = this.make.graphics({ x: 0, y: 0, add: false });
-        planetMap.fillStyle(0x1a2b3c, 1);
-        planetMap.fillRect(0, 0, 512, 256);
-        // Draw some fake continents/features
-        planetMap.fillStyle(0x2e8b57, 1);
-        planetMap.fillCircle(150, 100, 60);
-        planetMap.fillCircle(350, 160, 80);
-        planetMap.fillStyle(0xcd853f, 1);
-        planetMap.fillCircle(250, 80, 40);
-        planetMap.generateTexture('planetMap', 512, 256);
+        // Load actual planet textures
+        this.load.image('planetMap111', 'assets/Planets/Map-111.png');
+        this.load.image('planetMap122', 'assets/Planets/Map-122.png');
     }
 }
 
@@ -106,16 +102,41 @@ class GameScene extends Phaser.Scene {
 
         // Planet Background System
         this.planetBackground = new PlanetBackground(this, 0, 0);
+        // Add first planet with actual map texture
         this.planetBackground.addPlanet({
-            x: 200,
-            y: 150,
-            radius: 100,
-            texture: 'planetMap',
+            x: 400,
+            y: 300,
+            radius: 150,
+            texture: 'planetMap111',
             shader: 'PlanetShader',
             depth: -10,
-            rotationSpeed: 0.1,
-            parallaxX: 0.05,
-            parallaxY: 0.05
+            rotationSpeed: 0.05,
+            parallaxX: 0.03,
+            parallaxY: 0.03
+        });
+        // Add second planet
+        this.planetBackground.addPlanet({
+            x: 100,
+            y: 100,
+            radius: 100,
+            texture: 'planetMap122',
+            shader: 'PlanetShader',
+            depth: -5,
+            rotationSpeed: -0.03,
+            parallaxX: 0.02,
+            parallaxY: 0.02
+        });
+        // Add third planet
+        this.planetBackground.addPlanet({
+            x: 700,
+            y: 500,
+            radius: 120,
+            texture: 'planetMap111',
+            shader: 'PlanetShader',
+            depth: -15,
+            rotationSpeed: 0.07,
+            parallaxX: 0.04,
+            parallaxY: 0.04
         });
 
         // Physics group for projectiles (Integrated Physics)
