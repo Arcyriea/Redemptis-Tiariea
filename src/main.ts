@@ -97,6 +97,13 @@ class GameScene extends Phaser.Scene {
     };
     private nextFireTime = 0;
     private shiftKey!: Phaser.Input.Keyboard.Key;
+    private zoomKeyIn!: Phaser.Input.Keyboard.Key;
+    private zoomKeyOut!: Phaser.Input.Keyboard.Key;
+    private gameZoom: number = 1.0;
+    private minGameZoom: number = 0.3;
+    private maxGameZoom: number = 2.5;
+    private zoomStep: number = 0.1;
+    private gameWheelListener: (event: WheelEvent) => void;
     private projectiles!: Phaser.Physics.Arcade.Group;
     private infoText!: Phaser.GameObjects.Text;
     private planetBackground!: PlanetBackground;
@@ -187,7 +194,7 @@ class GameScene extends Phaser.Scene {
 
         // Physics for player container
         this.physics.add.existing(this.player);
-        (this.player.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(true);
+        (this.player.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(false);
         (this.player.body as Phaser.Physics.Arcade.Body).setDrag(200);
 
         // Input
@@ -200,8 +207,33 @@ class GameScene extends Phaser.Scene {
         };
         this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
+        // Game camera zoom
+        this.zoomKeyIn = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.EQUALS); // = key
+        this.zoomKeyOut = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.MINUS);   // - key
+        this.gameZoom = 1.0;
+        this.minGameZoom = 0.3;
+        this.maxGameZoom = 2.5;
+        this.zoomStep = 0.1;
+
+        // Mouse wheel zoom for game (when not over minimap)
+        this.gameWheelListener = (event: WheelEvent) => {
+            // Don't zoom if pointer is over minimap area
+            const minimap = this.engine.miniMap;
+            if (minimap && this.isPointerOverMinimap(event.clientX, event.clientY)) {
+                return;
+            }
+            event.preventDefault();
+            if (event.deltaY < 0) {
+                this.setGameZoom(this.gameZoom + this.zoomStep);
+            } else {
+                this.setGameZoom(this.gameZoom - this.zoomStep);
+            }
+        };
+        window.addEventListener('wheel', this.gameWheelListener, { passive: false });
+
         // Camera
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+        this.cameras.main.setZoom(this.gameZoom);
 
         // UI Text
         this.infoText = this.add.text(10, 10, 'Arrows/WASD: Move/Turn | Hold SHIFT: Aim with Mouse & Strafe | Hold Left Mouse: Fire', { color: '#ffffff' }).setScrollFactor(0);
@@ -315,6 +347,39 @@ class GameScene extends Phaser.Scene {
 
         // Run engine update logic (reverse-engineered from AS3)
         this.engine.update(time, delta);
+
+        // Game camera zoom input (keyboard)
+        if (Phaser.Input.Keyboard.JustDown(this.zoomKeyIn)) {
+            this.setGameZoom(this.gameZoom + this.zoomStep);
+        } else if (Phaser.Input.Keyboard.JustDown(this.zoomKeyOut)) {
+            this.setGameZoom(this.gameZoom - this.zoomStep);
+        }
+    }
+
+    /** Set game camera zoom with clamping. */
+    private setGameZoom(zoom: number): void {
+        this.gameZoom = Phaser.Math.Clamp(zoom, this.minGameZoom, this.maxGameZoom);
+        this.cameras.main.setZoom(this.gameZoom);
+    }
+
+    /** Check if pointer is over minimap area (to avoid zoom conflict). */
+    private isPointerOverMinimap(clientX: number, clientY: number): boolean {
+        const minimap = this.engine.miniMap;
+        if (!minimap) return false;
+        const canvas = this.game.canvas;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const localX = (clientX - rect.left) * scaleX;
+        const localY = (clientY - rect.top) * scaleY;
+
+        // Minimap position (it uses setScrollFactor(0) so it's at screen coords)
+        const mmX = minimap.x;
+        const mmY = minimap.y;
+        const mmW = minimap.borderWidth || 160;
+        const mmH = minimap.borderHeight || 160;
+        return localX >= mmX && localX <= mmX + mmW &&
+               localY >= mmY && localY <= mmY + mmH;
     }
 
     fireProjectile() {

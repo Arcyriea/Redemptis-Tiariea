@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import fragmentShader from '../../shaders/planets.glsl?raw';
+import { Game } from '../../core/Game';
 
 export class PlanetShader extends Phaser.GameObjects.Shader {
     constructor(
@@ -67,7 +68,9 @@ export class PlanetBackground {
         const texture = options.texture ?? 'planetMap';
 
         // In Phaser 4, we use the Shader Game Object directly
-        const planet = new PlanetShader(this.scene, options.x ?? 0, options.y ?? 0, radius * 2, radius * 2, texture);
+        // Expand quad size (1.2x) to accommodate atmospheric glow fringe
+        const glowRadius = radius * 1.2;
+        const planet = new PlanetShader(this.scene, options.x ?? 0, options.y ?? 0, glowRadius * 2, glowRadius * 2, texture);
 
         planet.setAlpha(options.alpha ?? 1);
 
@@ -91,6 +94,11 @@ export class PlanetBackground {
 
         this.container.add(planet);
         this.planets.push({ planet, config });
+
+        // Register planet with Game instance for minimap display
+        if (Game.instance) {
+            Game.instance.planets.push({ x: config.x ?? 0, y: config.y ?? 0, radius: config.radius ?? 128 });
+        }
 
         return planet;
     }

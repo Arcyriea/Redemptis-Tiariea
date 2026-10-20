@@ -49,6 +49,9 @@ export class Game {
     public homeSector: string = "";
     public lowFps: boolean = false;
 
+    // Planets (for minimap display)
+    public planets: Array<{x: number, y: number, radius: number}> = [];
+
     // References to managers/systems
     public ingame: any = null; // Will be Ingame scene
     public map: any = null; // MapBG
