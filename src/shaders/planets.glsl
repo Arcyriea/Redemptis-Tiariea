@@ -8,10 +8,10 @@ varying vec2 outTexCoord;
 void main() {
     const float PI = 3.14159265359;
 
-    // Local coordinates, centered on this planet's quad.
+    // Reserve 20% of the original radius for the glow.
     vec2 p = vec2(
-        outTexCoord.x * 2.0 - 1.0,
-        1.0 - outTexCoord.y * 2.0
+        (outTexCoord.x - 0.5) * 2.8,
+        (0.5 - outTexCoord.y) * 2.8
     );
 
     float r = length(p);
