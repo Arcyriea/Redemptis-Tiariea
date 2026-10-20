@@ -1,0 +1,69 @@
+<svg id="battleship-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" class="w-full h-full drop-shadow-2xl">
+                    <defs>
+                        <linearGradient id="valk-metal1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#3b0764"></stop>
+                            <stop offset="50%" stop-color="#1e1b4b"></stop>
+                            <stop offset="100%" stop-color="#020617"></stop>
+                        </linearGradient>
+                        <linearGradient id="valk-metal2" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#581c87"></stop>
+                            <stop offset="100%" stop-color="#1e1035"></stop>
+                        </linearGradient>
+                        <linearGradient id="valk-energy" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#f43f5e"></stop>
+                            <stop offset="50%" stop-color="#ec4899"></stop>
+                            <stop offset="100%" stop-color="#d946ef"></stop>
+                        </linearGradient>
+                        <filter id="pink-glow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+                            <feComposite in="SourceGraphic" in2="blur" operator="over"></feComposite>
+                        </filter>
+                    </defs>
+
+                    <!-- Thruster Trails -->
+                    <g class="layer-cores" style="display: block;">
+                        <polygon points="110,270 30,290 110,300 30,310 110,330 10,300" fill="url(#valk-energy)" filter="url(#pink-glow)" opacity="0.9" data-filter-active="true"></polygon>
+                    </g>
+
+                    <!-- Main Faceted Geometry -->
+                    <g class="layer-base" stroke="#c084fc" stroke-width="1.5" stroke-linejoin="miter">
+                        <!-- Primary Hull Prism Shell -->
+                        <polygon points="120,300 240,160 520,110 940,300 520,490 240,440" fill="url(#valk-metal1)"></polygon>
+                        
+                        <!-- Lateral Wing Facets -->
+                        <polygon points="240,160 380,60 620,130 520,110" fill="url(#valk-metal2)"></polygon>
+                        <polygon points="240,440 380,540 620,470 520,490" fill="url(#valk-metal2)"></polygon>
+                    </g>
+
+                    <!-- Paneling Overlay (Faceted Planes) -->
+                    <g class="layer-panels" stroke="#e879f9" stroke-width="1" fill-opacity="0.35" style="display: block;">
+                        <!-- Top Spine Plates -->
+                        <polygon points="320,240 520,170 700,270 520,300" fill="#a855f7"></polygon>
+                        <polygon points="320,360 520,430 700,330 520,300" fill="#7e22ce"></polygon>
+                        
+                        <!-- Forward Sharp Bow Facets -->
+                        <polygon points="700,270 940,300 700,300" fill="#c084fc"></polygon>
+                        <polygon points="700,330 940,300 700,300" fill="#9333ea"></polygon>
+                    </g>
+
+                    <!-- Energy Core & Emitters -->
+                    <g class="layer-cores" style="display: block;">
+                        <!-- Internal Energy Conduit Lines -->
+                        <line x1="160" y1="300" x2="900" y2="300" stroke="#f43f5e" stroke-width="3" filter="url(#pink-glow)" data-filter-active="true"></line>
+                        <!-- Diamond Energy Core -->
+                        <polygon points="460,300 500,270 540,300 500,330" fill="url(#valk-energy)" filter="url(#pink-glow)" data-filter-active="true"></polygon>
+                    </g>
+
+                    <!-- Detailed Accents & Cannon Lances -->
+                    <g class="layer-accents" stroke="#f472b6" stroke-width="1.5" style="display: block;">
+                        <!-- Forward Particle Lance -->
+                        <line x1="940" y1="300" x2="985" y2="300" stroke="#f43f5e" stroke-width="4" filter="url(#pink-glow)" data-filter-active="true"></line>
+                        
+                        <!-- Wing Spikes -->
+                        <line x1="380" y1="60" x2="440" y2="40"></line>
+                        <line x1="380" y1="540" x2="440" y2="560"></line>
+
+                        <!-- Facet Panel Details -->
+                        <circle cx="500" cy="300" r="4" fill="#fbcfe8" filter="url(#pink-glow)" data-filter-active="true"></circle>
+                    </g>
+                </svg>

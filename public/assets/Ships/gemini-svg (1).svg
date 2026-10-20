@@ -1,0 +1,244 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="100%" height="100%">
+  <defs>
+    <!-- Deep Space Background Gradient -->
+    <radialGradient id="spaceBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0a192f" />
+      <stop offset="60%" stop-color="#040b14" />
+      <stop offset="100%" stop-color="#02050a" />
+    </radialGradient>
+
+    <!-- Glow Effects -->
+    <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur1" />
+      <feGaussianBlur stdDeviation="15" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="glow-core" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur1" />
+      <feGaussianBlur stdDeviation="25" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Hull Gradients -->
+    <linearGradient id="hullLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e2ffff" />
+      <stop offset="50%" stop-color="#b8f0e8" />
+      <stop offset="100%" stop-color="#7bd3ce" />
+    </linearGradient>
+
+    <linearGradient id="hullMid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6bcbd0" />
+      <stop offset="50%" stop-color="#399db8" />
+      <stop offset="100%" stop-color="#1c5568" />
+    </linearGradient>
+
+    <linearGradient id="hullDark" x1="0%" y1="0%" x2="1%" y2="1%">
+      <stop offset="0%" stop-color="#1d3859" />
+      <stop offset="100%" stop-color="#0e1b2e" />
+    </linearGradient>
+
+    <radialGradient id="vortexCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="30%" stop-color="#8efff5" />
+      <stop offset="70%" stop-color="#1fa894" />
+      <stop offset="100%" stop-color="#083832" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background Canvas & Grid -->
+  <rect width="1000" height="1000" fill="url(#spaceBg)" />
+  
+  <g stroke="#173052" stroke-width="0.5" opacity="0.35">
+    <circle cx="500" cy="500" r="420" fill="none" stroke-dasharray="6,6" />
+    <circle cx="500" cy="500" r="300" fill="none" />
+    <circle cx="500" cy="500" r="160" fill="none" stroke-dasharray="4,4" />
+    <line x1="500" y1="50" x2="500" y2="950" stroke="#00ffff" stroke-dasharray="10,5" opacity="0.3" />
+    <line x1="50" y1="500" x2="950" y2="500" stroke="#00ffff" stroke-dasharray="10,5" opacity="0.3" />
+  </g>
+
+  <!-- MAIN SHIP ASSEMBLY (Radial/Cross Capital Carrier) -->
+  <g id="slashring-carrier">
+
+    <!-- 1. BACKGROUND ARCANE WEB / MANIPULATIVE FIELD -->
+    <g stroke="#5bfbf1" stroke-width="0.75" opacity="0.4" fill="none">
+      <path d="M 500,220 Q 580,350 780,500 Q 580,650 500,780 Q 420,650 220,500 Q 420,350 500,220 Z" />
+      <path d="M 500,280 Q 550,420 720,500 Q 550,580 500,720 Q 450,580 280,500 Q 450,420 500,280 Z" />
+      <!-- Concentric web strands -->
+      <circle cx="500" cy="500" r="220" stroke-dasharray="3,6" />
+      <circle cx="500" cy="500" r="180" stroke-dasharray="2,4" />
+    </g>
+
+    <!-- 2. FOUR CARDINAL SPEAR/DART BLADES (North, South, East, West) -->
+    <g stroke="#132448" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+      
+      <!-- EAST BLADE (Main Bow / Forward Spear) -->
+      <g>
+        <path d="M 680,460 L 920,490 L 980,500 L 920,510 L 680,540 Z" fill="url(#hullLight)" />
+        <path d="M 720,475 L 890,494 L 950,500 L 890,506 L 720,525 Z" fill="url(#hullMid)" />
+        <!-- Central Plasma Ridge -->
+        <line x1="700" y1="500" x2="940" y2="500" stroke="#5bfbf1" stroke-width="4" filter="url(#glow-cyan)" />
+        <!-- Base Mounting Housing -->
+        <path d="M 660,440 L 700,460 L 700,540 L 660,560 Z" fill="url(#hullDark)" />
+        <circle cx="680" cy="500" r="12" fill="url(#hullLight)" stroke="#132448" stroke-width="3" />
+        <circle cx="680" cy="500" r="6" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+
+      <!-- WEST BLADE (Aft / Stern Spear & Engine Emitters) -->
+      <g>
+        <path d="M 320,460 L 80,490 L 20,500 L 80,510 L 320,540 Z" fill="url(#hullLight)" />
+        <path d="M 280,475 L 110,494 L 50,500 L 110,506 L 280,525 Z" fill="url(#hullMid)" />
+        <line x1="300" y1="500" x2="60" y2="500" stroke="#5bfbf1" stroke-width="4" filter="url(#glow-cyan)" />
+        <!-- Base Housing -->
+        <path d="M 340,440 L 300,460 L 300,540 L 340,560 Z" fill="url(#hullDark)" />
+        <circle cx="320" cy="500" r="12" fill="url(#hullLight)" stroke="#132448" stroke-width="3" />
+        <circle cx="320" cy="500" r="6" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+
+      <!-- NORTH BLADE (Port Drone Bay & Stabilizer) -->
+      <g>
+        <path d="M 460,320 L 490,80 L 500,20 L 510,80 L 540,320 Z" fill="url(#hullLight)" />
+        <path d="M 475,350 L 494,110 L 500,50 L 506,110 L 525,350 Z" fill="url(#hullMid)" />
+        <line x1="500" y1="330" x2="500" y2="60" stroke="#5bfbf1" stroke-width="4" filter="url(#glow-cyan)" />
+        <!-- Base Housing -->
+        <path d="M 440,340 L 460,300 L 540,300 L 560,340 Z" fill="url(#hullDark)" />
+        <circle cx="500" cy="320" r="12" fill="url(#hullLight)" stroke="#132448" stroke-width="3" />
+        <circle cx="500" cy="320" r="6" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+
+      <!-- SOUTH BLADE (Starboard Drone Bay & Stabilizer) -->
+      <g>
+        <path d="M 460,680 L 490,920 L 500,980 L 510,920 L 540,680 Z" fill="url(#hullLight)" />
+        <path d="M 475,650 L 494,890 L 500,950 L 506,890 L 525,650 Z" fill="url(#hullMid)" />
+        <line x1="500" y1="670" x2="500" y2="940" stroke="#5bfbf1" stroke-width="4" filter="url(#glow-cyan)" />
+        <!-- Base Housing -->
+        <path d="M 440,660 L 460,700 L 540,700 L 560,660 Z" fill="url(#hullDark)" />
+        <circle cx="500" cy="680" r="12" fill="url(#hullLight)" stroke="#132448" stroke-width="3" />
+        <circle cx="500" cy="680" r="6" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+
+    </g>
+
+    <!-- 3. INTERSECTING FLANKING WING ARCS (Curved Rings connecting the 4 main axes) -->
+    <g stroke="#132448" stroke-width="4" stroke-linejoin="round" fill="none">
+      <!-- Northeast Arc -->
+      <path d="M 580,320 C 680,320 720,380 720,420" fill="url(#hullLight)" stroke-width="3" />
+      <!-- Northwest Arc -->
+      <path d="M 420,320 C 320,320 280,380 280,420" fill="url(#hullLight)" stroke-width="3" />
+      <!-- Southeast Arc -->
+      <path d="M 580,680 C 680,680 720,620 720,580" fill="url(#hullLight)" stroke-width="3" />
+      <!-- Southwest Arc -->
+      <path d="M 420,680 C 320,680 280,620 280,580" fill="url(#hullLight)" stroke-width="3" />
+    </g>
+
+    <!-- 4. CENTRAL RING CHASSIS & HULL PLATING -->
+    <g stroke="#132448" stroke-width="3" stroke-linejoin="round">
+      <!-- Outer Ring Shell -->
+      <circle cx="500" cy="500" r="180" fill="url(#hullDark)" stroke-width="6" />
+      <circle cx="500" cy="500" r="162" fill="url(#hullMid)" />
+      <circle cx="500" cy="500" r="140" fill="url(#hullLight)" />
+
+      <!-- Segmented Armor Plates on Ring -->
+      <g stroke="#132448" stroke-width="2.5" fill="url(#hullMid)">
+        <path d="M 460,338 L 540,338 L 525,360 L 475,360 Z" />
+        <path d="M 460,662 L 540,662 L 525,640 L 475,640 Z" />
+        <path d="M 338,460 L 338,540 L 360,525 L 360,475 Z" />
+        <path d="M 662,460 L 662,540 L 640,525 L 640,475 Z" />
+      </g>
+
+      <!-- Tiarimite Pearl Insets / Nodes (4 Diagonal Nodes) -->
+      <circle cx="600" cy="400" r="10" fill="#ffffff" stroke="#132448" stroke-width="2" filter="url(#glow-cyan)" />
+      <circle cx="400" cy="400" r="10" fill="#ffffff" stroke="#132448" stroke-width="2" filter="url(#glow-cyan)" />
+      <circle cx="600" cy="600" r="10" fill="#ffffff" stroke="#132448" stroke-width="2" filter="url(#glow-cyan)" />
+      <circle cx="400" cy="600" r="10" fill="#ffffff" stroke="#132448" stroke-width="2" filter="url(#glow-cyan)" />
+    </g>
+
+    <!-- 5. INNER CHAMBER & VORTEX ARCANE CORE -->
+    <g stroke="#132448" stroke-width="3">
+      <!-- Inner Technical Collar -->
+      <circle cx="500" cy="500" r="95" fill="#0b1e2d" />
+      
+      <!-- Rotating Runes / Energy Teeth Ring -->
+      <circle cx="500" cy="500" r="82" fill="none" stroke="#4ab8c4" stroke-width="5" stroke-dasharray="14,8" />
+
+      <!-- Glowing Central Power Vortex / Singularity -->
+      <circle cx="500" cy="500" r="62" fill="url(#vortexCore)" stroke="#ffffff" stroke-width="3" filter="url(#glow-core)" />
+      <circle cx="500" cy="500" r="28" fill="#ffffff" filter="url(#glow-cyan)" />
+    </g>
+
+    <!-- 6. ORBITING COMBAT DART DRONES (Four mini escort drones circling the chassis) -->
+    <g stroke="#132448" stroke-width="2">
+      <!-- Drone 1 (Top-Right) -->
+      <g transform="translate(640, 360) rotate(45)">
+        <polygon points="0,-16 8,10 -8,10" fill="url(#hullLight)" />
+        <circle cx="0" cy="4" r="3" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+      <!-- Drone 2 (Top-Left) -->
+      <g transform="translate(360, 360) rotate(315)">
+        <polygon points="0,-16 8,10 -8,10" fill="url(#hullLight)" />
+        <circle cx="0" cy="4" r="3" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+      <!-- Drone 3 (Bottom-Left) -->
+      <g transform="translate(360, 640) rotate(225)">
+        <polygon points="0,-16 8,10 -8,10" fill="url(#hullLight)" />
+        <circle cx="0" cy="4" r="3" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+      <!-- Drone 4 (Bottom-Right) -->
+      <g transform="translate(640, 640) rotate(135)">
+        <polygon points="0,-16 8,10 -8,10" fill="url(#hullLight)" />
+        <circle cx="0" cy="4" r="3" fill="#5bfbf1" filter="url(#glow-cyan)" />
+      </g>
+    </g>
+
+  </g>
+
+  <!-- HUD ANNOTATIONS & TECHNICAL SPECIFICATIONS -->
+  <g font-family="monospace, sans-serif" font-size="12" fill="#5bfbf1" opacity="0.85">
+    <!-- Header Title -->
+    <text x="40" y="50" font-size="20" font-weight="bold" letter-spacing="3" fill="#ffffff">TIAREIAN ARCANA SLASHRING-CLASS COMMAND CARRIER</text>
+    <text x="40" y="72" font-size="12" letter-spacing="2" fill="#4ab8c4">TOP-DOWN PLAN VIEW // PSIONIC RING PLATFORM</text>
+
+    <!-- Callouts & Pointer Lines -->
+    <!-- Callout 1: Primary Arcane Vortex Core -->
+    <path d="M 500,438 L 500,180 H 720" fill="none" stroke="#5bfbf1" stroke-width="1.5" stroke-dasharray="4,2" />
+    <circle cx="500" cy="438" r="3" fill="#5bfbf1" />
+    <text x="730" y="174" font-weight="bold">PSIONIC VORTEX CORE</text>
+    <text x="730" y="192" font-size="10" fill="#a3f7ee">ENERGY FIELD AMPLIFIER & TELEPORT MATRIX</text>
+
+    <!-- Callout 2: Forward Spear Emitter -->
+    <path d="M 920,500 L 950,300 H 760" fill="none" stroke="#5bfbf1" stroke-width="1.5" stroke-dasharray="4,2" />
+    <circle cx="920" cy="500" r="3" fill="#5bfbf1" />
+    <text x="640" y="294" font-weight="bold">MAIN ARCANE SLASHRING BOW</text>
+    <text x="640" y="312" font-size="10" fill="#a3f7ee">LONG-RANGE RELAY BEAM HARDPOINT</text>
+
+    <!-- Callout 3: Combat Dart Drones -->
+    <path d="M 640,360 L 760,250 H 880" fill="none" stroke="#5bfbf1" stroke-width="1.5" stroke-dasharray="4,2" />
+    <circle cx="640" cy="360" r="3" fill="#5bfbf1" />
+    <text x="890" y="244" font-weight="bold">ORBITING DART DRONE HANGARS</text>
+    <text x="890" y="262" font-size="10" fill="#a3f7ee">AUTONOMOUS RADAR & PULSE PODS</text>
+
+    <!-- Callout 4: Tiarimite Pearls -->
+    <path d="M 600,400 L 720,840 H 850" fill="none" stroke="#5bfbf1" stroke-width="1.5" stroke-dasharray="4,2" />
+    <circle cx="600" cy="400" r="3" fill="#5bfbf1" />
+    <text x="860" y="834" font-weight="bold">TIARIMITE PEARL NODES</text>
+    <text x="860" y="852" font-size="10" fill="#a3f7ee">RESONANCE & SHIELD GENERATION</text>
+
+    <!-- Scale Indicator -->
+    <g transform="translate(760, 920)">
+      <rect x="0" y="0" width="200" height="40" fill="#0c1d33" stroke="#173052" stroke-width="1" />
+      <line x1="15" y1="20" x2="185" y2="20" stroke="#5bfbf1" stroke-width="2" />
+      <line x1="15" y1="12" x2="15" y2="28" stroke="#5bfbf1" stroke-width="2" />
+      <line x1="100" y1="15" x2="100" y2="25" stroke="#5bfbf1" stroke-width="1" />
+      <line x1="185" y1="12" x2="185" y2="28" stroke="#5bfbf1" stroke-width="2" />
+      <text x="100" y="34" font-size="10" text-anchor="middle" fill="#a3f7ee">1.2 KILOMETERS</text>
+    </g>
+  </g>
+</svg>

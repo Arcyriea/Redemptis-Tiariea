@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Game } from './core/Game';
 import { MiniMap } from './ui/MiniMap';
 import { PlanetBackground, PlanetShader } from './entities/background/Planet';
+import { SpaceBackground } from './entities/background/SpaceBackground';
 
 // Scene to handle loading and generating dummy textures
 class BootScene extends Phaser.Scene {
@@ -13,6 +14,14 @@ class BootScene extends Phaser.Scene {
         // Load actual planet textures from public folder
         this.load.image('planetMap111', '/assets/Planets/Map-111.png');
         this.load.image('planetMap122', '/assets/Planets/Map-122.png');
+        this.load.image('planetMap692', '/assets/Planets/Map-692.png');
+
+        // Load SVG sprites (rasterized to textures by the Loader).
+        // These are blueprint-scale drawings, so a scale factor keeps them
+        // crisp at a usable in-game resolution without losing vector detail.
+        this.load.svg('human-dreadnought', '/assets/Ships/human-dreadnought.svg', { scale: 0.5 });
+        this.load.svg('alien-interceptor', '/assets/Ships/alien-interceptor.svg', { scale: 0.5 });
+        this.load.svg('central-hull', '/assets/Components/01_central_hull.svg', { scale: 0.5 });
 
         // Generate dummy textures using graphics
         this.createDummyTextures();
@@ -71,6 +80,7 @@ class BootScene extends Phaser.Scene {
         // Load actual planet textures
         this.load.image('planetMap111', 'assets/Planets/Map-111.png');
         this.load.image('planetMap122', 'assets/Planets/Map-122.png');
+        this.load.image('planetMap692', 'assets/Planets/Map-692.png');
     }
 }
 
@@ -90,6 +100,7 @@ class GameScene extends Phaser.Scene {
     private projectiles!: Phaser.Physics.Arcade.Group;
     private infoText!: Phaser.GameObjects.Text;
     private planetBackground!: PlanetBackground;
+    private spaceBackground!: SpaceBackground;
 
     constructor() {
         super('GameScene');
@@ -97,8 +108,21 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
-        // Background Grid
-        this.add.grid(0, 0, 2000, 2000, 50, 50, 0x111111).setOrigin(0);
+        // Misty space background: nebula gradient + twinkling stars (no grid).
+        // Drawn behind everything with a slow parallax scroll.
+        this.spaceBackground = new SpaceBackground(this, {
+            x: 0,
+            y: 0,
+            width: 2000,
+            height: 2000,
+            starCount: 450,
+            starMaxRadius: 1.6,
+            nebulaColor: 0x1a2a6c,
+            nebulaStrength: 0.5,
+            scrollFactorX: 0.05,
+            scrollFactorY: 0.05
+        });
+        this.spaceBackground.graphics.setDepth(-20);
 
         // Planet Background System
         this.planetBackground = new PlanetBackground(this, 0, 0);
@@ -107,7 +131,7 @@ class GameScene extends Phaser.Scene {
             x: 400,
             y: 300,
             radius: 150,
-            texture: 'planetMap111',
+            texture: 'planetMap692',
             shader: 'PlanetShader',
             depth: -10,
             rotationSpeed: 0.05,
@@ -142,9 +166,12 @@ class GameScene extends Phaser.Scene {
         // Physics group for projectiles (Integrated Physics)
         this.projectiles = this.physics.add.group();
 
-        // Create a modular player ship using Container
+        // Create a modular player ship using Container.
+        // The central hull uses an SVG component texture (loaded via this.load.svg),
+        // demonstrating vector sprites in the modular pipeline.
         this.player = this.add.container(400, 300);
-        const coreSprite = this.add.sprite(0, 0, 'ship-core');
+        const coreSprite = this.add.sprite(0, 0, 'human-dreadnought');
+        coreSprite.setScale(0.18); // SVG rasterized at 400x310 -> ~72x56 in-game
         this.player.add(coreSprite);
 
         // Add modular wings (hull expansions)
@@ -281,6 +308,11 @@ class GameScene extends Phaser.Scene {
             this.planetBackground.update(delta);
         }
 
+        // Update misty space background (nebula + twinkling stars)
+        if (this.spaceBackground) {
+            this.spaceBackground.update(delta);
+        }
+
         // Run engine update logic (reverse-engineered from AS3)
         this.engine.update(time, delta);
     }
@@ -312,8 +344,8 @@ class GameScene extends Phaser.Scene {
 
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    width: 800,
-    height: 600,
+    width: '100%',
+    height: '100%',
     parent: 'app',
     physics: {
         default: 'arcade',

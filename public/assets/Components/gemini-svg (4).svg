@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 280">
+<defs><linearGradient id="nose" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d8fbf3" /><stop offset="1" stop-color="#4cb8c7" /></linearGradient></defs>
+<g stroke="#172b62" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+ <path d="M26 139 Q38 78 107 51 L322 17 Q351 12 365 42 L389 127 Q393 141 386 157 L355 231 Q346 252 321 249 L109 221 Q38 199 26 139Z" fill="url(#nose)" />
+ <path d="M65 137 Q79 94 127 76 L300 47 L330 131 L301 211 L126 191 Q79 177 65 137Z" fill="#c8f6ee" stroke-width="3" />
+ <path d="M127 76 L165 131 L126 191 M165 131 L330 131 M165 131 L301 211" fill="none" stroke-width="3" />
+ <path d="M300 47 L330 131 L355 231" fill="none" stroke-width="3" />
+</g></svg>
