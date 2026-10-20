@@ -10,10 +10,10 @@ Further storyline after this will most likely be a downloadable Steam Game in a 
 
 # Factions
 
-##Yutiarinalian Realms
+## Yutiarinalian Realms
 The last standing feudal bastion realm of the Tiariean race, it is known that some other feudal realms existed before was eventually merged under the Yutiarinalian's rule, the faction is led by the Flas'hanya's house amongst them all.
 
-#Aistiaria Federation
+## Aistiaria Federation
 Also known as Aistiaria Federal Republic, they were group of states that was once used to be feudal states, but their peoples broke away and form their own ruling republics, overthrowing their kings and queens (some of which were deserved, others are overthrown out of malice).
 
 </div>
