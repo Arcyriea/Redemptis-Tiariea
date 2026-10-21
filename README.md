@@ -32,8 +32,11 @@ Adaptive division meant to integrates the living Tiariean to its synthetic artif
 
 ## Aistiaria Origins
 ### Divinica
+Autonomous units with god-like capabilities just like some of the Tiariean-folklore on their once great gods that was once around from a very long time ago, before such gods was purged and punished for their abuses of powers. The Aistiarian once exert their dominance through Divinica, however it ends up trying to wrestle with their ruling seats instead.
 ### Amethysca
+AI entities meant to help research unknown quantum physics once buried in the ruins of the ancient Tiariean's ancestors from a long distant past... However as their research goes, they end up being misaligned and turned on their researchers companions.
 ### Yinyalista
+This was when the Aistiarian authorities decided to do the same thing their Yutiarinalian counterpart was doing, intergrates themselves with their once dominant artificial technology, just to try and adapt to the situations they inflicted upon themselves with their blind ambitions...
 
 ## Isindor Origins
 ### Caliphista
