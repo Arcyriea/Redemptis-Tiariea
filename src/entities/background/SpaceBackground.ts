@@ -25,9 +25,8 @@ export interface SpaceBackgroundOptions {
 
 /**
  * An infinite/screen-locked misty space background.
- * Locks to the camera view (`scrollFactor(0, 0)`) and fills the entire screen.
- * Counteracts camera zoom so the nebula stays fixed on screen while only stars
- * drift with parallax. Stars wrap around screen edges for infinite field.
+ * Renders on a dedicated background camera (fixed zoom=1, fixed scroll=0).
+ * Nebula gradient fills screen; stars twinkle and wrap at screen edges.
  */
 export class SpaceBackground {
     public graphics: Phaser.GameObjects.Graphics;
@@ -38,8 +37,6 @@ export class SpaceBackground {
     private twinkleSpeed: number;
     private nebulaColor: number;
     private nebulaStrength: number;
-    private lastCameraX: number = 0;
-    private lastCameraY: number = 0;
 
     constructor(scene: Phaser.Scene, options: SpaceBackgroundOptions = {}) {
         this.scene = scene;
@@ -53,19 +50,15 @@ export class SpaceBackground {
         this.graphics = scene.add.graphics({ x: 0, y: 0, add: true });
         this.graphics.setScrollFactor(0, 0);
 
-        const cam = scene.cameras.main;
-        this.lastCameraX = cam.scrollX;
-        this.lastCameraY = cam.scrollY;
-
         this.generateStars(this.starCount, this.starMaxRadius);
         this.drawFrame();
     }
 
     /** Seed stars across the current screen dimensions. */
     private generateStars(count: number, maxRadius: number): void {
-        const cam = this.scene.cameras.main;
-        const w = cam.width || 800;
-        const h = cam.height || 600;
+        // Use scene scale dimensions (screen size) since background camera is fixed at zoom=1
+        const w = this.scene.scale.width || 800;
+        const h = this.scene.scale.height || 600;
 
         this.stars = [];
         for (let i = 0; i < count; i++) {
@@ -84,9 +77,9 @@ export class SpaceBackground {
     private drawFrame(): void {
         this.graphics.clear();
 
-        const cam = this.scene.cameras.main;
-        const w = cam.width || 800;
-        const h = cam.height || 600;
+        // Use scene scale dimensions (screen size) since background camera is fixed at zoom=1
+        const w = this.scene.scale.width || 800;
+        const h = this.scene.scale.height || 600;
 
         // Misty nebula gradient filling the screen viewport
         this.graphics.fillGradientStyle(
@@ -104,30 +97,17 @@ export class SpaceBackground {
     }
 
     update(delta: number): void {
-        const cam = this.scene.cameras.main;
-        const w = cam.width || 800;
-        const h = cam.height || 600;
-        const zoom = cam.zoom || 1;
+        // Use scene scale dimensions (screen size) since background camera is fixed at zoom=1
+        const w = this.scene.scale.width || 800;
+        const h = this.scene.scale.height || 600;
 
-        // Counteract camera zoom so nebula stays fixed on screen
-        // (stars will still drift with parallax)
-        this.graphics.setScale(1 / zoom);
-
-        // Calculate camera delta movement for star parallax drift
-        const dx = cam.scrollX - this.lastCameraX;
-        const dy = cam.scrollY - this.lastCameraY;
-        this.lastCameraX = cam.scrollX;
-        this.lastCameraY = cam.scrollY;
-
-        // Update star twinkle phases and wrap positions when they drift off screen
+        // Update star twinkle phases
         for (const s of this.stars) {
             s.twinklePhase += s.twinkleSpeed * (delta / 1000);
+        }
 
-            // Parallax drift (stars move slower than camera) - in screen space
-            s.x -= dx * 0.15;
-            s.y -= dy * 0.15;
-
-            // Screen wrapping so stars never run out
+        // Screen wrapping so stars never run out (fixed camera, no parallax drift)
+        for (const s of this.stars) {
             if (s.x < 0) s.x += w;
             else if (s.x > w) s.x -= w;
 

@@ -108,6 +108,7 @@ class GameScene extends Phaser.Scene {
     private infoText!: Phaser.GameObjects.Text;
     private planetBackground!: PlanetBackground;
     private spaceBackground!: SpaceBackground;
+    private backgroundCamera!: Phaser.Cameras.Scene2D.Camera;
 
     constructor() {
         super('GameScene');
@@ -129,7 +130,6 @@ class GameScene extends Phaser.Scene {
             scrollFactorX: 0.05,
             scrollFactorY: 0.05
         });
-        this.spaceBackground.graphics.setDepth(-20);
 
         // Planet Background System
         this.planetBackground = new PlanetBackground(this, 0, 0);
@@ -235,13 +235,30 @@ class GameScene extends Phaser.Scene {
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
         this.cameras.main.setZoom(this.gameZoom);
 
-        // UI Text
+        // Dedicated background camera (fixed zoom=1, fixed scroll=0, renders behind main)
+        this.backgroundCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.backgroundCamera.setZoom(1);
+        this.backgroundCamera.setScroll(0, 0);
+
+        // UI Text (created early so it can be ignored by background camera)
         this.infoText = this.add.text(10, 10, 'Arrows/WASD: Move/Turn | Hold SHIFT: Aim with Mouse & Strafe | Hold Left Mouse: Fire', { color: '#ffffff' }).setScrollFactor(0);
+
+        // Background camera ignores all world objects (renders only space background)
+        // Note: projectiles are in a Group (not GameObject), omitted from ignore list.
+        // Since background camera is fixed at world origin, projectiles only appear if near (0,0).
+        this.backgroundCamera.ignore(this.player);
+        this.backgroundCamera.ignore(this.planetBackground.container);
+        this.backgroundCamera.ignore(this.infoText);
+        this.backgroundCamera.ignore(this.projectiles);
 
         // ShellCore-style MiniMap HUD (Fixed on top-right)
         const minimap = new MiniMap(this, 640, 10);
         minimap.setScrollFactor(0);
         this.engine.miniMap = minimap;
+        // Main camera ignores space background (rendered by background camera)
+        this.cameras.main.ignore(this.spaceBackground.graphics);
+        this.cameras.main.ignore(this.engine.miniMap);
+
     }
 
     update(time, delta) {
@@ -354,6 +371,10 @@ class GameScene extends Phaser.Scene {
         } else if (Phaser.Input.Keyboard.JustDown(this.zoomKeyOut)) {
             this.setGameZoom(this.gameZoom - this.zoomStep);
         }
+
+        for (const bullet of this.projectiles.getChildren() as Phaser.Physics.Arcade.Sprite[]) {
+            this.backgroundCamera.ignore(bullet); // Background camera ignores projectiles
+        }
     }
 
     /** Set game camera zoom with clamping. */
@@ -402,7 +423,10 @@ class GameScene extends Phaser.Scene {
 
         // Destroy after 2 seconds
         this.time.delayedCall(2000, () => {
-            if (bullet.active) bullet.destroy();
+            if (bullet.active) {
+                this.projectiles.remove(bullet);
+                bullet.destroy();
+            }
         });
     }
 }
