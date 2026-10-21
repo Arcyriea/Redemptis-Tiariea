@@ -54,7 +54,9 @@ Slumbering in the ancient ruins buried deep in the Ijyiakaryai's past ancestors 
 These are ancient autonomous beings that might be hostile at first to any explorers until it verified they do not have any perceived malevolent causes for arriving at their holds, especially if they recognizes a familiar face to stand down and help them uncover any hidden truths...
 ### Forgotten Vanguards of the Old Valleys
 A very long time ago the Ijyiakaryai managed to created a very sosphisticated and advanced artificial warriors, but with a very sosphisticated guardrails and grand moral doings, these beings never went to betrayal, and the Ijyiakaryai vowed to let them sleep until the very days they truly need to awake them to serve their realms again.
+
 <hr>
+
 ### INVASION FORCES
 ## Caliphathic Eden
 ## Astral Union
