@@ -43,6 +43,11 @@ This was when the Aistiarian authorities decided to do the same thing their Yuti
 ### Doraniaca
 ### Isilica
 
+## Elven Ijyiakaryai
+### The First Protectorate Guardians
+### The Sentinels of Protected Records
+### Forgotten Vanguards of the Old Valleys
+
 ### INVASION FORCES
 ## Caliphathic Eden
 ## Astral Union
