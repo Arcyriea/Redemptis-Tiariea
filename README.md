@@ -20,6 +20,7 @@ Also known as Aistiaria Federal Republic, they were group of states that was onc
 ## Verdania Principality
 Neutral realm, serve as financial, technological, and cultural center of the Tiariean world... It refuses to be a part of either Yutiarin nor Aistiaria, both of them depends on Verdania for economical and cultural support.
 
+<hr>
 ### ARTIFICIAL AIs
 
 ## Yutiarin Origins
@@ -40,14 +41,20 @@ This was when the Aistiarian authorities decided to do the same thing their Yuti
 
 ## Isindor Origins
 ### Caliphista
+Subversive agents that infiltrated the Tiariean society long before they even made their very first AI, they were the agents of the Caliphathic Eden, poised to manipulates great ancient malevolent events within the Tiariean society driving wars and strifes to the favours of Isindor, Anatra and the Caliphathic Eden.
 ### Doraniaca
+Stolen AI repurposed by the Caliphista, to at the very least extract some values out of the Tiariean's inventions as they override them with their own philosophies and brainwash them to their wills...
 ### Isilica
+A more advanced models but serve a different purposes for Anatra and her faction within the Caliphathic Eden...
 
-## Elven Ijyiakaryai
+## Ancestor Ijyiakaryai's Ruins
 ### The First Protectorate Guardians
+Slumbering in the ancient ruins buried deep in the Ijyiakaryai's past ancestors that once opposed the ancient Tiarieans who appoint themselves as "gods", they might not be able to identify the intentions of any intruders arrives at the place they meant to defends and protect the hidden secrets...
 ### The Sentinels of Protected Records
+These are ancient autonomous beings that might be hostile at first to any explorers until it verified they do not have any perceived malevolent causes for arriving at their holds, especially if they recognizes a familiar face to stand down and help them uncover any hidden truths...
 ### Forgotten Vanguards of the Old Valleys
-
+A very long time ago the Ijyiakaryai managed to created a very sosphisticated and advanced artificial warriors, but with a very sosphisticated guardrails and grand moral doings, these beings never went to betrayal, and the Ijyiakaryai vowed to let them sleep until the very days they truly need to awake them to serve their realms again.
+<hr>
 ### INVASION FORCES
 ## Caliphathic Eden
 ## Astral Union
