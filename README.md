@@ -21,6 +21,7 @@ Also known as Aistiaria Federal Republic, they were group of states that was onc
 Neutral realm, serve as financial, technological, and cultural center of the Tiariean world... It refuses to be a part of either Yutiarin nor Aistiaria, both of them depends on Verdania for economical and cultural support.
 
 <hr>
+
 ### ARTIFICIAL AIs
 
 ## Yutiarin Origins
@@ -59,5 +60,7 @@ A very long time ago the Ijyiakaryai managed to created a very sosphisticated an
 
 ### INVASION FORCES
 ## Caliphathic Eden
+A group of fanatic obliterators once serves the wills of Eden, they swept on worlds that do not aligns with the views of their total paradise, and obliterates primitives that went against their visions... Isindor once led them as something moral and different a very long time ago, until Anatra wrestle control of the whole faith and turn them to what they are today...
 ## Astral Union
+Another invasion forces not have anything to do with the Caliphathic Eden's faith, but they are aligned to do their things against the Tiariean, the Astral Union's goals is to eradicates any traces of human chosen ones, and that they aim to obliterates any races even resembling a single similarity to both the Humans and the Katuri.
 </div>
