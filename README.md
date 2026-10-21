@@ -9,6 +9,7 @@ That will be the future vision, but for now this Phaser2D project will be hosted
 Further storyline after this will most likely be a downloadable Steam Game in a different releases.
 
 # Factions
+### NATIVE BORNS
 
 ## Yutiarinalian Realms
 The last standing feudal bastion realm of the Tiariean race, it is known that some other feudal realms existed before was eventually merged under the Yutiarinalian's rule, the faction is led by the Flas'hanya's house amongst them all.
@@ -19,4 +20,24 @@ Also known as Aistiaria Federal Republic, they were group of states that was onc
 ## Verdania Principality
 Neutral realm, serve as financial, technological, and cultural center of the Tiariean world... It refuses to be a part of either Yutiarin nor Aistiaria, both of them depends on Verdania for economical and cultural support.
 
+### ARTIFICIAL ORIGINS
+
+## Yutiarin Origins
+### Harmonica
+### Imperica
+### Evangelista
+
+## Aistiaria Origins
+### Divinica
+### Amethysca
+### Yinyalista
+
+## Isindor Origins
+### Caliphista
+### Doraniaca
+### Isilica
+
+### INVASION FORCES
+## Caliphathic Eden
+## Astral Union
 </div>
