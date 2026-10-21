@@ -232,52 +232,7 @@ class GameScene extends Phaser.Scene {
         };
         window.addEventListener('wheel', this.gameWheelListener, { passive: false });
 
-        // Camera
-        this.cameras.main.startFollow(this.player, false, 0.1, 0.1);
-        this.cameras.main.setZoom(this.gameZoom);
-
-        // Dedicated background camera (fixed zoom=1, fixed scroll=0, renders behind main)
-        this.backgroundCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-        this.backgroundCamera.setZoom(1);
-        this.backgroundCamera.setScroll(0, 0);
-
-        const cameras = this.cameras.cameras;
-        cameras.splice(cameras.indexOf(this.backgroundCamera), 1);
-        cameras.unshift(this.backgroundCamera);
-
-        // UI Text (created early so it can be ignored by background camera)
-        this.infoText = this.add.text(10, 10, 'Arrows/WASD: Move/Turn | Hold SHIFT: Aim with Mouse & Strafe | Hold Left Mouse: Fire', { color: '#ffffff' }).setScrollFactor(0);
-
-        // Background camera ignores all world objects (renders only space background)
-        // Note: projectiles are in a Group (not GameObject), omitted from ignore list.
-        // Since background camera is fixed at world origin, projectiles only appear if near (0,0).
-        this.backgroundCamera.ignore(this.player);
-        this.backgroundCamera.ignore(this.planetBackground.container);
-        this.backgroundCamera.ignore(this.infoText);
-        this.backgroundCamera.ignore(this.projectiles);
-
-        // ShellCore-style MiniMap HUD (Fixed on top-right)
-        const minimap = new MiniMap(this, 640, 10);
-        minimap.setScrollFactor(0);
-        this.engine.miniMap = minimap;
-
-        this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-        this.uiCamera.setZoom(1);
-        this.uiCamera.setScroll(0, 0);
-        this.uiCamera.ignore(this.children.list.filter(
-            gameObject => gameObject !== minimap && gameObject !== this.infoText
-        ));
-        this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, (gameObject: Phaser.GameObjects.GameObject) => {
-            if (gameObject !== minimap && gameObject !== this.infoText) {
-                this.uiCamera.ignore(gameObject);
-            }
-        });
-
-        this.backgroundCamera.ignore(minimap);
-        // Main camera ignores space background (rendered by background camera)
-        this.cameras.main.ignore(this.spaceBackground.graphics);
-        this.cameras.main.ignore(minimap);
-        this.cameras.main.ignore(this.infoText);
+        this.manageCamera();
     }
 
     update(time, delta) {
@@ -447,6 +402,55 @@ class GameScene extends Phaser.Scene {
                 bullet.destroy();
             }
         });
+    }
+
+    manageCamera() {
+        // Camera
+        this.cameras.main.startFollow(this.player, false, 0.1, 0.1);
+        this.cameras.main.setZoom(this.gameZoom);
+
+        // Dedicated background camera (fixed zoom=1, fixed scroll=0, renders behind main)
+        this.backgroundCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.backgroundCamera.setZoom(1);
+        this.backgroundCamera.setScroll(0, 0);
+
+        const cameras = this.cameras.cameras;
+        cameras.splice(cameras.indexOf(this.backgroundCamera), 1);
+        cameras.unshift(this.backgroundCamera);
+
+        // UI Text (created early so it can be ignored by background camera)
+        this.infoText = this.add.text(10, 10, 'Arrows/WASD: Move/Turn | Hold SHIFT: Aim with Mouse & Strafe | Hold Left Mouse: Fire', { color: '#ffffff' }).setScrollFactor(0);
+
+        // Background camera ignores all world objects (renders only space background)
+        // Note: projectiles are in a Group (not GameObject), omitted from ignore list.
+        // Since background camera is fixed at world origin, projectiles only appear if near (0,0).
+        this.backgroundCamera.ignore(this.player);
+        this.backgroundCamera.ignore(this.planetBackground.container);
+        this.backgroundCamera.ignore(this.infoText);
+        this.backgroundCamera.ignore(this.projectiles);
+
+        // ShellCore-style MiniMap HUD (Fixed on top-right)
+        const minimap = new MiniMap(this, 640, 10);
+        minimap.setScrollFactor(0);
+        this.engine.miniMap = minimap;
+
+        this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.uiCamera.setZoom(1);
+        this.uiCamera.setScroll(0, 0);
+        this.uiCamera.ignore(this.children.list.filter(
+            gameObject => gameObject !== minimap && gameObject !== this.infoText
+        ));
+        this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, (gameObject: Phaser.GameObjects.GameObject) => {
+            if (gameObject !== minimap && gameObject !== this.infoText) {
+                this.uiCamera.ignore(gameObject);
+            }
+        });
+
+        this.backgroundCamera.ignore(minimap);
+        // Main camera ignores space background (rendered by background camera)
+        this.cameras.main.ignore(this.spaceBackground.graphics);
+        this.cameras.main.ignore(minimap);
+        this.cameras.main.ignore(this.infoText);
     }
 }
 
