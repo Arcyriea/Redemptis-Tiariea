@@ -64,13 +64,19 @@ A group of fanatic obliterators once serves the wills of Eden, they swept on wor
 ## Astral Union
 Another invasion forces not have anything to do with the Caliphathic Eden's faith, but they are aligned to do their things against the Tiariean, the Astral Union's goals is to eradicates any traces of human chosen ones, and that they aim to obliterates any races even resembling a single similarity to both the Humans and the Katuri.
 
+<hr>
+
 ### POTENTIAL ALLIES
+## Jurisdictate Council
+Opposed the Caliphathic Eden long before they interacted with the Tiarieans... They are the opposers who once serves the same faith as Isindor, until the very day they rebels and formed the Jurisdiction.
+## United Galactic Federation
+Main rival of the Astral Union, they seek to stop them from destroying more alien races and enslaves the galaxies... They once formed in response against Grimarous Prime and his bioforms, then they oppose the Astral Union
+
+<hr>
+
+### REDEMPTION PARTNER
 ## Elven Ijyiakaryai
 MERASSYILRI<br>
 NIARIEKYIAI - KISARAKYIL - SAKIGARAIK - HAYAKIYIAI<br><br>
 Even though the Ijyiakaryai and the Tiariean ancestors once has a turbulent past, they both fell victim to the same Isindor, for the Ijyiakaryai the Isindor was once ally against the bad ancestral Tiariean. They eventually end up betraying the Ijyiakaryai and ever since then the elves hates the Isindor and what their Caliphathic Eden currently represents under the manipulation of Anatra.
-## Jurisdictate Council
-Opposed the Caliphathic Eden long before they interacted with the Tiarieans... They are the opposers who once serves the same faith as Isindor, until the very day they rebels and formed the Jurisdiction.
-## United Galactic Federation
-Main rival of the Astral Union, they seek to stop them from destroying more alien races and enslaves the galaxies...
 </div>
