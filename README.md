@@ -20,12 +20,15 @@ Also known as Aistiaria Federal Republic, they were group of states that was onc
 ## Verdania Principality
 Neutral realm, serve as financial, technological, and cultural center of the Tiariean world... It refuses to be a part of either Yutiarin nor Aistiaria, both of them depends on Verdania for economical and cultural support.
 
-### ARTIFICIAL ORIGINS
+### ARTIFICIAL AIs
 
 ## Yutiarin Origins
 ### Harmonica
+The first AI created by the Yutiarinalian's science divisions, once helped the Yutiarin to quell aways its rival the Imperica whom was once commited to violent rebellion... Ultimately Harmonica have its own agenda and turned against the Yutiarinalian while launch itself to rivalry with the Imperica.
 ### Imperica
+Another AI division originally meant to bolster the Yutiarinalian tactical military might to measure themselves against Aistiaria, however it unfortunately misaligned and turn against the Yutiarin as a whole, trying to consolidate powers by its own.
 ### Evangelista
+Adaptive division meant to integrates the living Tiariean to its synthetic artificial systems instead of being fully autonomous, it avoided the mistakes of the past two predeccessors.
 
 ## Aistiaria Origins
 ### Divinica
