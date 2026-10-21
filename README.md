@@ -16,4 +16,7 @@ The last standing feudal bastion realm of the Tiariean race, it is known that so
 ## Aistiaria Federation
 Also known as Aistiaria Federal Republic, they were group of states that was once used to be feudal states, but their peoples broke away and form their own ruling republics, overthrowing their kings and queens (some of which were deserved, others are overthrown out of malice).
 
+## Verdania Principality
+Neutral realm, serve as financial, technological, and cultural center of the Tiariean world... It refuses to be a part of either Yutiarin nor Aistiaria, both of them depends on Verdania for economical and cultural support.
+
 </div>
