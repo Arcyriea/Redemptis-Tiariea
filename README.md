@@ -9,7 +9,7 @@ That will be the future vision, but for now this Phaser2D project will be hosted
 Further storyline after this will most likely be a downloadable Steam Game in a different releases.
 
 # Factions
-### NATIVE BORNS
+### + NATIVE BORNS +
 
 ## Yutiarinalian Realms
 The last standing feudal bastion realm of the Tiariean race, it is known that some other feudal realms existed before was eventually merged under the Yutiarinalian's rule, the faction is led by the Flas'hanya's house amongst them all.
@@ -22,7 +22,7 @@ Neutral realm, serve as financial, technological, and cultural center of the Tia
 
 <hr>
 
-### ARTIFICIAL AIs
+### + ARTIFICIAL AI + 
 
 ## Yutiarin Origins
 ### Harmonica
@@ -61,7 +61,7 @@ A very long time ago the Ijyiakaryai managed to created a very sosphisticated an
 
 <hr>
 
-### INVASION FORCES
+### + INVASION FORCES + 
 ## Caliphathic Eden
 A group of fanatic obliterators once serves the wills of Eden, they swept on worlds that do not aligns with the views of their total paradise, and obliterates primitives that went against their visions... Isindor once led them as something moral and different a very long time ago, until Anatra wrestle control of the whole faith and turn them to what they are today...
 ## Astral Union
@@ -69,7 +69,7 @@ Another invasion forces not have anything to do with the Caliphathic Eden's fait
 
 <hr>
 
-### POTENTIAL ALLIES
+### + POTENTIAL ALLIES +
 ## Jurisdictate Council
 Opposed the Caliphathic Eden long before they interacted with the Tiarieans... They are the opposers who once serves the same faith as Isindor, until the very day they rebels and formed the Jurisdiction.
 ## United Galactic Federation
@@ -77,9 +77,13 @@ Main rival of the Astral Union, they seek to stop them from destroying more alie
 
 <hr>
 
-### REDEMPTION PARTNER
+### + REDEMPTION PARTNER +
 ## Elven Ijyiakaryai
 MERASSYILRI<br>
 NIARIEKYIAI - KISARAKYIL - SAKIGARAIK - HAYAKIYIAI<br><br>
 Even though the Ijyiakaryai and the Tiariean ancestors once has a turbulent past, they both fell victim to the same Isindor, for the Ijyiakaryai the Isindor was once ally against the bad ancestral Tiariean. They eventually end up betraying the Ijyiakaryai and ever since then the elves hates the Isindor and what their Caliphathic Eden currently represents under the manipulation of Anatra.
+
+## Free Innomini
+Runaway Refugees<br><br>
+A stray away states of peoples who escaped the Isindor and now seek refuge with either the Tiarieans or the Ijyiakaryai, any other races that still not despite their racial origin. They aim to save their peoples from Isindor, only who they can saves.
 </div>
