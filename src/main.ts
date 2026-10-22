@@ -76,11 +76,6 @@ class BootScene extends Phaser.Scene {
         enemy.lineStyle(2, 0xffffff, 1);
         enemy.strokeRect(0, 0, 40, 40);
         enemy.generateTexture('enemy-core', 40, 40);
-
-        // Load actual planet textures
-        this.load.image('planetMap111', 'assets/Planets/Map-111.png');
-        this.load.image('planetMap122', 'assets/Planets/Map-122.png');
-        this.load.image('planetMap692', 'assets/Planets/Map-692.png');
     }
 }
 

@@ -5,6 +5,8 @@ import { ObjectPool } from './ObjectPool';
 import { TaskManager } from '../tasks/TaskManager';
 import { UIManager, MiniMap } from '../ui/UIManager';
 import { SoundManager } from '../audio/SoundManager';
+import { EntityManager } from '../managers/EntityManager';
+import { ShipManager } from '../managers/ShipManager';
 
 export class Game {
     // Core game state
@@ -61,6 +63,8 @@ export class Game {
     public soundManager: SoundManager | null = null;
     public camera: Camera | null = null;
     public objectPool: ObjectPool | null = null;
+    public entityManager: EntityManager | null = null;
+    public shipManager: ShipManager | null = null;
 
     // Input state
     public keys: any = {
@@ -78,10 +82,12 @@ export class Game {
 
     initSystems() {
         this.objectPool = new ObjectPool();
+        this.entityManager = new EntityManager();
         this.camera = new Camera();
         this.taskManager = new TaskManager();
         this.uiManager = new UIManager();
         this.soundManager = new SoundManager();
+        this.shipManager = new ShipManager(this);
 
         // Load game data (ship/part/component definitions)
         this.loadGameData();
@@ -91,6 +97,9 @@ export class Game {
         // This would load JSON definitions for ships, parts, components
         // For now, placeholder - would be loaded from assets/data/
         console.log("Loading game data...");
+
+        // Sync ship blueprint catalogue once shipData is available
+        if (this.shipManager) this.shipManager.syncFromGame();
     }
 
     // Main game update - called each frame
@@ -126,6 +135,7 @@ export class Game {
         for (let i = this.queueAlly.length - 1; i >= 0; i--) {
             const ship = this.queueAlly[i];
             if (ship.removeIt) {
+                this.entityManager?.unregister(ship);
                 this.queueAlly.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
                 this.numAlly--;
@@ -138,6 +148,7 @@ export class Game {
         for (let i = this.queueEnemy.length - 1; i >= 0; i--) {
             const ship = this.queueEnemy[i];
             if (ship.removeIt) {
+                this.entityManager?.unregister(ship);
                 this.queueEnemy.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
                 this.numEnemy--;
@@ -150,6 +161,7 @@ export class Game {
         for (let i = this.queueTanks.length - 1; i >= 0; i--) {
             const ship = this.queueTanks[i];
             if (ship.removeIt) {
+                this.entityManager?.unregister(ship);
                 this.queueTanks.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
             } else if (ship.active) {
@@ -161,6 +173,7 @@ export class Game {
         for (let i = this.queueStations.length - 1; i >= 0; i--) {
             const ship = this.queueStations[i];
             if (ship.removeIt) {
+                this.entityManager?.unregister(ship);
                 this.queueStations.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
             } else if (ship.active) {
@@ -194,31 +207,11 @@ export class Game {
             const [type, count, alignment, x, y, waypoints, shipData, taskBehavior] = spawnData;
 
             for (let i = 0; i < count; i++) {
-                const ship = this.objectPool ? this.objectPool.getShipObject(type, alignment) : null;
-                if (ship) {
-                    ship.x = x + (Math.random() - 0.5) * 20; // Small random offset
-                    ship.y = y + (Math.random() - 0.5) * 20;
-                    ship.init(type, alignment);
-
-                    if (waypoints) {
-                        ship.waypoints = waypoints.map(wp => [wp[0] + x, wp[1] + y]);
-                    }
-
-                    if (taskBehavior) {
-                        ship.taskBehavior = taskBehavior;
-                    }
-
-                    // Add to appropriate queue
-                    if (alignment === "Ally") this.queueAlly.push(ship);
-                    else if (alignment === "Enemy") this.queueEnemy.push(ship);
-
-                    // Spawn effect
-                    const spawnEffect = this.objectPool ? this.objectPool.getEffect("Spawn") : null;
-                    if (spawnEffect) {
-                        spawnEffect.init("Spawn", ship.x, ship.y);
-                        this.effectsQueue.push(spawnEffect);
-                    }
-                }
+                this.shipManager?.createShip(type, alignment, x, y, {
+                    waypoints,
+                    taskBehavior,
+                    spawnEffect: true
+                });
             }
         }
     }
@@ -228,7 +221,7 @@ export class Game {
             const ship = this.respawnQueue.shift();
             if (ship) {
                 // Handle respawn logic
-                if (this.objectPool) this.objectPool.disposeShipObject(ship);
+                this.shipManager?.disposeShip(ship);
             }
         }
     }
@@ -241,19 +234,10 @@ export class Game {
 
     // Ship creation helpers
     spawnShip(type: string, alignment: string, x: number, y: number, waypoints: any[] = null): Ship {
-        const ship = this.objectPool ? this.objectPool.getShipObject(type, alignment) : null;
-        if (ship) {
-            ship.x = x;
-            ship.y = y;
-            ship.init(type, alignment);
-            if (waypoints) ship.waypoints = waypoints;
-
-            if (alignment === "Ally") this.queueAlly.push(ship);
-            else if (alignment === "Enemy") this.queueEnemy.push(ship);
-
-            return ship;
-        }
-        return null;
+        return this.shipManager?.createShip(type, alignment, x, y, {
+            waypoints: waypoints ?? undefined,
+            randomOffset: 0 // exact placement for direct spawnShip calls
+        }) ?? null;
     }
 
     // Resource spawning
@@ -315,6 +299,9 @@ export class Game {
         this.pupQueue = [];
         this.spawnQueue = [];
         this.respawnQueue = [];
+
+        // Clear entity registry
+        if (this.entityManager) this.entityManager.clear();
 
         // Dispose all pooled objects
         if (this.objectPool) this.objectPool.clearAll();
