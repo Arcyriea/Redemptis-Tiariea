@@ -1,5 +1,6 @@
 import { Game } from '../core/Game';
 import { Component } from '../entities/Component';
+// PhysicsProjectile and Phaser imported dynamically in fireArcadeProjectile (browser only)
 
 export class Weapon {
     public game: Game;
@@ -34,9 +35,10 @@ export class Weapon {
         // Load weapon data from game definitions
         const weaponDef = this.game.componentData[name];
         if (weaponDef) {
-            const [type, subType, damage, range, cooldown, energyCost, speed, splash] = weaponDef;
-            this.type = type || "Cannon";
-            this.subType = subType || "";
+            const [compCategory, weaponType, damage, range, cooldown, energyCost, speed, splash] = weaponDef;
+            // compCategory = "Weapon" (component category), weaponType = "Cannon"/"Beam"/"Projectile"/"ProjectileArcade"
+            this.type = weaponType || "Cannon";       // Weapon subtype for firing logic
+            this.subType = compCategory || "Weapon";   // Component category
             this.damage = damage || 10;
             this.range = range || 300;
             this.cooldown = cooldown || 1.0;
@@ -56,7 +58,7 @@ export class Weapon {
         }
     }
 
-    activate(target: any = null) {
+    async activate(target: any = null) {
         if (!this.ready || !this.component || !this.component.ship) return false;
 
         const ship = this.component.ship;
@@ -68,7 +70,7 @@ export class Weapon {
         } else if (this.type === "Cannon" || this.type === "Projectile") {
             this.fireProjectile(ship, part, target);
         } else if (this.type === "ProjectileArcade") {
-            this.fireArcadeProjectile(ship, part, target);
+            await this.fireArcadeProjectile(ship, part, target);
         }
 
         // Play sound
@@ -98,7 +100,42 @@ export class Weapon {
         // In a full implementation, create a Projectile object in Phaser physics or custom pool
     }
 
-    fireArcadeProjectile(ship: any, part: any, target: any) {
-        // Similar to standard projectile with arcade physics vector
+    async fireArcadeProjectile(ship: any, part: any, target: any) {
+        // Use direct Phaser Scene reference on ship (set by GameScene during player creation)
+        const scene = ship.phaserScene;
+        if (!scene) return;
+
+        // Ship.rotation is in degrees; convert to radians
+        const rad = ship.rotation * (Math.PI / 180);
+
+        // Calculate spawn position from part offset (same math as fireProjectile)
+        const spawnX = ship.x + Math.cos(rad) * part.x - Math.sin(rad) * part.y;
+        const spawnY = ship.y + Math.sin(rad) * part.x + Math.cos(rad) * part.y;
+
+        // Get shooter velocity from Phaser body for velocity inheritance
+        const body = ship.phaserBody as any; // Phaser.Physics.Arcade.Body (browser only)
+        const shooterVelocityX = body?.velocity?.x ?? 0;
+        const shooterVelocityY = body?.velocity?.y ?? 0;
+
+        // Dynamic import to avoid pulling Phaser into Node.js test environment
+        const { PhysicsProjectile } = await import('../physics/PhysicsProjectile');
+
+        // Create projectile via PhysicsProjectile (inherits velocity, applies drag, auto-destructs)
+        const projectile = new PhysicsProjectile({
+            scene,
+            x: spawnX,
+            y: spawnY,
+            texture: 'bullet',
+            shooterVelocityX,
+            shooterVelocityY,
+            angle: rad,
+            muzzleVelocity: this.projectileSpeed,
+            damage: this.damage,
+            drag: 10,
+            lifespanMs: 2000
+        });
+
+        // Add to scene's projectile group for camera/collision management
+        scene.playerProjectiles?.add(projectile);
     }
 }

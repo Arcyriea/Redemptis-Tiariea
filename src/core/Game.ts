@@ -98,6 +98,28 @@ export class Game {
         // For now, placeholder - would be loaded from assets/data/
         console.log("Loading game data...");
 
+        // Player ship definition
+        this.shipData = {
+            "player": [
+                [ // partsData: [partName, posX, posY, rotation, isLoot]
+                    ["central-hull", 0, 0, 0, false]
+                ],
+                [ // compData: [compName] per part
+                    ["PlayerCannon"]
+                ],
+                "Ship",      // superType
+                "Player",    // subType → enables tractor beam
+                "Player Ship",
+                "Air"        // categoryType
+            ]
+        };
+
+        // Player weapon component definition
+        // Format per Weapon.init(): [type, subType, damage, range, cooldown, energyCost, projectileSpeed, splashRadius]
+        this.componentData = {
+            "PlayerCannon": ["Weapon", "ProjectileArcade", 10, 400, 0.15, 5, 600, 0] // cooldown 0.15s = 150ms
+        };
+
         // Sync ship blueprint catalogue once shipData is available
         if (this.shipManager) this.shipManager.syncFromGame();
     }

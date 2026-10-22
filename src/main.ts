@@ -100,6 +100,8 @@ class GameScene extends Phaser.Scene {
     private zoomStep: number = 0.1;
     private gameWheelListener: (event: WheelEvent) => void;
     private projectiles!: Phaser.Physics.Arcade.Group;
+    private playerProjectiles!: Phaser.Physics.Arcade.Group; // Exposed for Weapon.fireArcadeProjectile
+    private playerShip: any = null; // Ship instance linked to player Container
     private infoText!: Phaser.GameObjects.Text;
     private planetBackground!: PlanetBackground;
     private spaceBackground!: SpaceBackground;
@@ -166,7 +168,7 @@ class GameScene extends Phaser.Scene {
             parallaxY: 0.04
         });
 
-        // Physics group for projectiles (Integrated Physics)
+        // Physics group for player projectiles (Integrated Physics)
         this.projectiles = this.physics.add.group();
 
         // Create a modular player ship using Container.
@@ -227,7 +229,62 @@ class GameScene extends Phaser.Scene {
         };
         window.addEventListener('wheel', this.gameWheelListener, { passive: false });
 
+        // CREATE PLAYER SHIP VIA OBJECT POOL (Step 3)
+        const pool = this.engine.objectPool;
+        if (pool) {
+            this.playerShip = pool.getShipObject("player", "Ally");
+
+            if (this.playerShip) {
+                // Position at container's location
+                this.playerShip.x = this.player.x;
+                this.playerShip.y = this.player.y;
+                this.playerShip.rotation = this.player.rotation * (180 / Math.PI); // rad → deg
+
+                // Link Phaser body and scene reference for Weapon.fireArcadeProjectile
+                this.playerShip.phaserBody = this.player.body as Phaser.Physics.Arcade.Body;
+                this.playerShip.phaserScene = this;  // Direct GameScene reference
+
+                // Expose projectiles group as playerProjectiles for Weapon.fireArcadeProjectile
+                this.playerProjectiles = this.projectiles;
+
+                // Register with EntityManager (stable ID, NO queue insertion)
+                this.engine.entityManager?.register(this.playerShip, 'ship');
+
+                // Assign sprite reference (for any visual sync)
+                this.playerShip.sprite = this.player;
+            }
+        }
+
         this.manageCamera();
+
+        // SHUTDOWN cleanup for player Ship (Step 5)
+        this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
+            this.cleanupPlayerShip();
+        });
+    }
+
+    private cleanupPlayerShip(): void {
+        if (!this.playerShip) return;
+
+        // 1. Unregister from EntityManager (idempotent - safe to call multiple times)
+        this.engine.entityManager?.unregister(this.playerShip);
+
+        // 2. Return to pool via ObjectPool (handles active=false, removeIt=true, resetIt, tractor cleanup)
+        this.engine.objectPool?.disposeShipObject(this.playerShip);
+
+        // 3. Clear back-references to prevent retaining scene/physics body
+        this.playerShip.phaserScene = null;
+        this.playerShip.phaserBody = null;
+        this.playerShip.sprite = null;
+
+        // 4. Null out our reference
+        this.playerShip = null;
+
+        // 5. Clear projectiles group - Phaser scene shutdown destroys physics world,
+        // but explicit clear ensures no dangling references
+        if (this.projectiles) {
+            this.projectiles.clear(true, true); // destroy children, remove from physics
+        }
     }
 
     update(time, delta) {
@@ -315,10 +372,25 @@ class GameScene extends Phaser.Scene {
         // Limit top speed
         body.setMaxVelocity(maxSpeed);
 
-        // Fire repeatedly while the left mouse button is held.
+        // Sync Container → Ship (before engine.update so EntityManager queries see current state)
+        if (this.playerShip) {
+            this.playerShip.x = this.player.x;
+            this.playerShip.y = this.player.y;
+            this.playerShip.rotation = this.player.rotation * (180 / Math.PI); // rad → deg
+            this.playerShip.moveX = body.velocity.x;
+            this.playerShip.moveY = body.velocity.y;
+        }
+
+        // Fire via compWeapon iteration (replaces manual fireProjectile)
         if (this.input.activePointer.leftButtonDown() && time >= this.nextFireTime) {
-            this.fireProjectile();
-            this.nextFireTime = time + 150;
+            if (this.playerShip && this.playerShip.phaserBody && this.playerShip.phaserScene) {
+                for (const comp of this.playerShip.compWeapon) {
+                    if (comp.ready) {
+                        comp.activate();
+                    }
+                }
+            }
+            this.nextFireTime = time + 150; // 150ms cooldown matches prototype
         }
 
         // Update Planet Background positions & Parallax
