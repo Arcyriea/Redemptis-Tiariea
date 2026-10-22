@@ -48,12 +48,15 @@ Stolen AI repurposed by the Caliphista, to at the very least extract some values
 ### Isilica
 A more advanced models but serve a different purposes for Anatra and her faction within the Caliphathic Eden...
 
-## Ancestor Ijyiakaryai's Ruins
-### The First Protectorate Guardians
+## Ancestral Ijyiakaryai Origins
+### Sulmakaraik
+#### The First Protectorate Guardians
 Slumbering in the ancient ruins buried deep in the Ijyiakaryai's past ancestors that once opposed the ancient Tiarieans who appoint themselves as "gods", they might not be able to identify the intentions of any intruders arrives at the place they meant to defends and protect the hidden secrets...
-### The Sentinels of Protected Records
+### Kulsirakyil
+#### The Sentinels of Protected Records
 These are ancient autonomous beings that might be hostile at first to any explorers until it verified they do not have any perceived malevolent causes for arriving at their holds, especially if they recognizes a familiar face to stand down and help them uncover any hidden truths...
-### Forgotten Vanguards of the Old Valleys
+### Ulthyriakyiai
+#### Forgotten Vanguards of the Old Valleys
 A very long time ago the Ijyiakaryai managed to created a very sosphisticated and advanced artificial warriors, but with a very sosphisticated guardrails and grand moral doings, these beings never went to betrayal, and the Ijyiakaryai vowed to let them sleep until the very days they truly need to awake them to serve their realms again.
 
 <hr>
