@@ -90,7 +90,6 @@ class GameScene extends Phaser.Scene {
         left: Phaser.Input.Keyboard.Key;
         right: Phaser.Input.Keyboard.Key;
     };
-    private nextFireTime = 0;
     private shiftKey!: Phaser.Input.Keyboard.Key;
     private zoomKeyIn!: Phaser.Input.Keyboard.Key;
     private zoomKeyOut!: Phaser.Input.Keyboard.Key;
@@ -379,18 +378,20 @@ class GameScene extends Phaser.Scene {
             this.playerShip.rotation = this.player.rotation * (180 / Math.PI); // rad → deg
             this.playerShip.moveX = body.velocity.x;
             this.playerShip.moveY = body.velocity.y;
+            for (const comp of this.playerShip.compWeapon) {
+                comp.update(delta);
+            }
         }
 
         // Fire via compWeapon iteration (replaces manual fireProjectile)
-        if (this.input.activePointer.leftButtonDown() && time >= this.nextFireTime) {
+        if (this.input.activePointer.leftButtonDown()) {
             if (this.playerShip && this.playerShip.phaserBody && this.playerShip.phaserScene) {
                 for (const comp of this.playerShip.compWeapon) {
-                    if (comp.ready) {
-                        comp.activate();
-                    }
+                    void comp.activate().catch((error: unknown) => {
+                        console.error("Player weapon activation failed.", error);
+                    });
                 }
             }
-            this.nextFireTime = time + 150; // 150ms cooldown matches prototype
         }
 
         // Update Planet Background positions & Parallax

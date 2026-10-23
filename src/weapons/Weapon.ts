@@ -14,8 +14,6 @@ export class Weapon {
     public energyCost: number = 5;
     public projectileSpeed: number = 10;
     public splashRadius: number = 0;
-    public counter: number = 0;
-    public ready: boolean = true;
     public removeIt: boolean = false;
 
     // Phaser visual references
@@ -48,18 +46,8 @@ export class Weapon {
         }
     }
 
-    update() {
-        if (!this.ready) {
-            this.counter++;
-            if (this.counter >= this.cooldown * 10) {
-                this.ready = true;
-                this.counter = 0;
-            }
-        }
-    }
-
     async activate(target: any = null) {
-        if (!this.ready || !this.component || !this.component.ship) return false;
+        if (!this.component || !this.component.ship) return false;
 
         const ship = this.component.ship;
         const part = this.component.shipPart;
@@ -70,7 +58,9 @@ export class Weapon {
         } else if (this.type === "Cannon" || this.type === "Projectile") {
             this.fireProjectile(ship, part, target);
         } else if (this.type === "ProjectileArcade") {
-            await this.fireArcadeProjectile(ship, part, target);
+            if (!(await this.fireArcadeProjectile(ship, part, target))) return false;
+        } else {
+            return false;
         }
 
         // Play sound
@@ -78,8 +68,6 @@ export class Weapon {
             this.game.playSound(this.type === "Beam" ? "Beam1" : "Cannon");
         }
 
-        this.ready = false;
-        this.counter = 0;
         return true;
     }
 
@@ -100,10 +88,10 @@ export class Weapon {
         // In a full implementation, create a Projectile object in Phaser physics or custom pool
     }
 
-    async fireArcadeProjectile(ship: any, part: any, target: any) {
+    async fireArcadeProjectile(ship: any, part: any, target: any): Promise<boolean> {
         // Use direct Phaser Scene reference on ship (set by GameScene during player creation)
         const scene = ship.phaserScene;
-        if (!scene) return;
+        if (!scene) return false;
 
         // Ship.rotation is in degrees; convert to radians
         const rad = ship.rotation * (Math.PI / 180);
@@ -119,6 +107,7 @@ export class Weapon {
 
         // Dynamic import to avoid pulling Phaser into Node.js test environment
         const { PhysicsProjectile } = await import('../physics/PhysicsProjectile');
+        if (ship.phaserScene !== scene) return false;
 
         // Create projectile via PhysicsProjectile (inherits velocity, applies drag, auto-destructs)
         const projectile = new PhysicsProjectile({
@@ -135,7 +124,13 @@ export class Weapon {
             lifespanMs: 2000
         });
 
-        // Add to scene's projectile group for camera/collision management
+        // Group insertion reapplies its body defaults, so restore the captured firing physics.
         scene.playerProjectiles?.add(projectile);
+        projectile.setVelocity(
+            Math.cos(rad) * this.projectileSpeed + shooterVelocityX,
+            Math.sin(rad) * this.projectileSpeed + shooterVelocityY
+        );
+        projectile.setDrag(10);
+        return true;
     }
 }
