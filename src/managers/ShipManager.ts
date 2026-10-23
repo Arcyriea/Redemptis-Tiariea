@@ -1,14 +1,13 @@
 import { Game } from '../core/Game';
 import { Ship } from '../entities/Ship';
-import { ShipBlueprint } from './ShipBlueprint';
+import { ShipBlueprint, ShipBlueprintDefinition } from './ShipBlueprint';
 
 /**
  * ShipManager - ship catalogue + centralized ship creation/disposal.
  *
  * Scope (deliberately narrow):
- *  - Blueprint catalogue: stable ids that map to the existing Game.shipData
- *    source keys. It never defines ship statistics itself; it only indexes what
- *    Ship.init() already reads.
+ *  - Blueprint catalogue: stable ids map to source keys and may own structured
+ *    ship definitions. Legacy Game.shipData definitions remain indexed too.
  *  - createShip(): the single creation path used by every spawn entry point.
  *    It owns pool acquire, position, stable-ID registration, waypoint/task
  *    assignment, queue selection, and optional spawn effect.
@@ -37,10 +36,22 @@ export class ShipManager {
      * Register a blueprint. Accepts either an id + sourceKey pair or an
      * existing ShipBlueprint instance. Returns the registered blueprint.
      */
-    registerBlueprint(id: string, sourceKey: string): ShipBlueprint;
+    registerBlueprint(id: string, sourceKey: string, definition?: ShipBlueprintDefinition): ShipBlueprint;
     registerBlueprint(blueprint: ShipBlueprint): ShipBlueprint;
-    registerBlueprint(a: any, b?: string): ShipBlueprint {
-        const blueprint = typeof a === 'string' ? new ShipBlueprint(a, b as string) : (a as ShipBlueprint);
+    registerBlueprint(
+        blueprintOrId: string | ShipBlueprint,
+        sourceKey?: string,
+        definition?: ShipBlueprintDefinition
+    ): ShipBlueprint {
+        let blueprint: ShipBlueprint;
+        if (typeof blueprintOrId === 'string') {
+            if (sourceKey === undefined) {
+                throw new Error('A source key is required to register a ship blueprint.');
+            }
+            blueprint = new ShipBlueprint(blueprintOrId, sourceKey, definition);
+        } else {
+            blueprint = blueprintOrId;
+        }
         this.blueprints.set(blueprint.id, blueprint);
         this.bySourceKey.set(blueprint.sourceKey, blueprint);
         return blueprint;

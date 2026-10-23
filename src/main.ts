@@ -170,24 +170,18 @@ class GameScene extends Phaser.Scene {
         // Physics group for player projectiles (Integrated Physics)
         this.projectiles = this.physics.add.group();
 
-        // Create a modular player ship using Container.
-        // The central hull uses an SVG component texture (loaded via this.load.svg),
-        // demonstrating vector sprites in the modular pipeline.
+        const playerBlueprint = this.engine.shipManager?.getBlueprintForSourceKey('player');
+        const playerDefinition = playerBlueprint?.shipDefinition;
+        if (!playerBlueprint || !playerDefinition) {
+            throw new Error('The player ship blueprint is not registered.');
+        }
+
         this.player = this.add.container(400, 300);
-        const coreSprite = this.add.sprite(0, 0, 'human-dreadnought');
-        coreSprite.setScale(0.18); // SVG rasterized at 400x310 -> ~72x56 in-game
-        this.player.add(coreSprite);
-
-        // Add modular wings (hull expansions)
-        const leftWing = this.add.sprite(-20, -25, 'ship-wing');
-        const rightWing = this.add.sprite(-20, 25, 'ship-wing');
-        this.player.add([leftWing, rightWing]);
-
-        // Add preset hardpoints
-        const hp1 = this.add.sprite(30, 0, 'hardpoint'); // Front
-        const hp2 = this.add.sprite(-10, -20, 'hardpoint'); // Left wing
-        const hp3 = this.add.sprite(-10, 20, 'hardpoint'); // Right wing
-        this.player.add([hp1, hp2, hp3]);
+        for (const visual of playerDefinition.visual.sprites) {
+            const sprite = this.add.sprite(visual.x, visual.y, visual.textureKey);
+            if (visual.scale !== undefined) sprite.setScale(visual.scale);
+            this.player.add(sprite);
+        }
 
         // Physics for player container
         this.physics.add.existing(this.player);
@@ -231,7 +225,7 @@ class GameScene extends Phaser.Scene {
         // CREATE PLAYER SHIP VIA OBJECT POOL (Step 3)
         const pool = this.engine.objectPool;
         if (pool) {
-            this.playerShip = pool.getShipObject("player", "Ally");
+            this.playerShip = pool.getShipObject(playerBlueprint.sourceKey, "Ally");
 
             if (this.playerShip) {
                 // Position at container's location

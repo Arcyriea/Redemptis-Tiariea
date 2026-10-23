@@ -1,6 +1,7 @@
 import { Game } from '../core/Game';
 import { Component } from './Component';
 import { TractorEffect } from '../effects/TractorEffect';
+import { ShipBlueprintDefinition, ShipBlueprintPart } from '../managers/ShipBlueprint';
 
 export class Ship {
     [x: string]: any;
@@ -83,44 +84,67 @@ export class Ship {
         this.removeIt = false;
         this.exploding = false;
 
-        // Load ship definitions from game data
-        const shipDef = this.game.shipData[this.type];
-        if (shipDef) {
-            const [partsData, compData, superType, subType, name, categoryType] = shipDef;
-            this.superType = superType;
-            this.subType = subType;
-            this.name = name;
-            this.categoryType = categoryType;
+        const blueprint = this.game.shipManager?.getBlueprintForSourceKey(this.type)?.shipDefinition;
+        const legacyShipDef = blueprint ? undefined : this.game.shipData[this.type];
+        if (blueprint || legacyShipDef) {
+            let partsData: ShipBlueprintPart[];
+            const componentsByPart = new Map<number, string[]>();
+
+            if (blueprint) {
+                this.applyBlueprint(blueprint);
+                partsData = blueprint.gameplay.parts;
+                for (const attachment of blueprint.gameplay.components) {
+                    const components = componentsByPart.get(attachment.partIndex) ?? [];
+                    components.push(attachment.name);
+                    componentsByPart.set(attachment.partIndex, components);
+                }
+            } else {
+                const [legacyParts, compData, superType, subType, name, categoryType] = legacyShipDef;
+                this.superType = superType;
+                this.subType = subType;
+                this.name = name;
+                this.categoryType = categoryType;
+                partsData = legacyParts.map((partInfo: any[]) => ({
+                    name: partInfo[0],
+                    x: partInfo[1],
+                    y: partInfo[2],
+                    rotation: partInfo[3],
+                    isLoot: partInfo[4]
+                }));
+                this.maxHull = 0;
+                this.maxShell = 0;
+                this.weight = 0;
+                this.value = 0;
+
+                for (let partIndex = 0; partIndex < partsData.length; partIndex++) {
+                    if (compData && compData[partIndex] && compData[partIndex] !== 'none') {
+                        componentsByPart.set(partIndex, [compData[partIndex][0]]);
+                    }
+                }
+            }
 
             if (this.superType === "Station" || this.superType === "Turret") {
                 this.immobile = true;
             }
 
-            // Build modular parts and components
-            this.maxHull = 0;
-            this.maxShell = 0;
-            this.weight = 0;
-            this.value = 0;
-
             for (let i = 0; i < partsData.length; i++) {
                 const partInfo = partsData[i];
-                // partInfo: [partName, posX, posY, rotation, isLoot]
                 const part = {
-                    name: partInfo[0],
-                    x: partInfo[1] * 5,
-                    y: partInfo[2] * 5,
-                    rotation: partInfo[3],
-                    maxHull: 100 // default
+                    name: partInfo.name,
+                    x: partInfo.x * 5,
+                    y: partInfo.y * 5,
+                    rotation: partInfo.rotation,
+                    maxHull: partInfo.maxHull ?? 100
                 };
 
-                this.maxShell += part.maxHull * 0.5;
-                this.maxHull += part.maxHull * 0.25;
-                this.weight += 10;
+                if (!blueprint) {
+                    this.maxShell += part.maxHull * 0.5;
+                    this.maxHull += part.maxHull * 0.25;
+                    this.weight += 10;
+                }
                 this.parts.push(part);
 
-                // Attach component if present
-                if (compData && compData[i] && compData[i] !== "none") {
-                    const compName = compData[i][0];
+                for (const compName of componentsByPart.get(i) ?? []) {
                     const comp = new Component();
                     comp.init(compName, this, part);
                     this.components.push(comp);
@@ -143,6 +167,23 @@ export class Ship {
             this.tractor.ship = this;
             this.tractor.init();
         }
+    }
+
+    private applyBlueprint(blueprint: ShipBlueprintDefinition): void {
+        this.superType = blueprint.superType;
+        this.subType = blueprint.subType;
+        this.name = blueprint.name;
+        this.categoryType = blueprint.categoryType;
+        this.maxHull = blueprint.stats.maxHull;
+        this.maxShell = blueprint.stats.maxShell;
+        this.regenShell = blueprint.stats.regenShell;
+        this.maxEnergy = blueprint.stats.maxEnergy;
+        this.regenEnergy = blueprint.stats.regenEnergy;
+        this.maxSpeed = blueprint.stats.maxSpeed;
+        this.acceleration = blueprint.stats.acceleration;
+        this.weight = blueprint.stats.weight;
+        this.radius = blueprint.stats.radius;
+        this.value = blueprint.stats.value;
     }
 
     update() {
@@ -295,5 +336,12 @@ export class Ship {
         this.currentEnergy = this.maxEnergy;
         this.moving = false;
         this.immobile = false;
+        this.parts.length = 0;
+        this.components.length = 0;
+        this.compWeapon.length = 0;
+        this.compSkill.length = 0;
+        this.compSpawn.length = 0;
+        this.compPassive.length = 0;
+        this.waypoints.length = 0;
     }
 }

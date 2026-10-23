@@ -98,21 +98,7 @@ export class Game {
         // For now, placeholder - would be loaded from assets/data/
         console.log("Loading game data...");
 
-        // Player ship definition
-        this.shipData = {
-            "player": [
-                [ // partsData: [partName, posX, posY, rotation, isLoot]
-                    ["central-hull", 0, 0, 0, false]
-                ],
-                [ // compData: [compName] per part
-                    ["PlayerCannon"]
-                ],
-                "Ship",      // superType
-                "Player",    // subType → enables tractor beam
-                "Player Ship",
-                "Air"        // categoryType
-            ]
-        };
+        this.shipData = {};
 
         // Player weapon component definition
         // Format per Weapon.init(): [type, subType, damage, range, cooldown, energyCost, projectileSpeed, splashRadius]
@@ -120,8 +106,45 @@ export class Game {
             "PlayerCannon": ["Weapon", "ProjectileArcade", 10, 400, 0.15, 5, 600, 0] // cooldown 0.15s = 150ms
         };
 
-        // Sync ship blueprint catalogue once shipData is available
-        if (this.shipManager) this.shipManager.syncFromGame();
+        this.shipManager?.registerBlueprint('ship.player', 'player', {
+            superType: 'Ship',
+            subType: 'Player',
+            name: 'Player Ship',
+            categoryType: 'Air',
+            stats: {
+                maxHull: 25,
+                maxShell: 50,
+                regenShell: 0,
+                maxEnergy: 100,
+                regenEnergy: 0,
+                maxSpeed: 5,
+                acceleration: 0.5,
+                weight: 10,
+                radius: 20,
+                value: 0
+            },
+            gameplay: {
+                parts: [
+                    { name: 'central-hull', x: 0, y: 0, rotation: 0, isLoot: false }
+                ],
+                components: [
+                    { partIndex: 0, name: 'PlayerCannon' }
+                ]
+            },
+            visual: {
+                sprites: [
+                    { textureKey: 'human-dreadnought', x: 0, y: 0, scale: 0.18 },
+                    { textureKey: 'ship-wing', x: -20, y: -25 },
+                    { textureKey: 'ship-wing', x: -20, y: 25 },
+                    { textureKey: 'hardpoint', x: 30, y: 0 },
+                    { textureKey: 'hardpoint', x: -10, y: -20 },
+                    { textureKey: 'hardpoint', x: -10, y: 20 }
+                ]
+            }
+        });
+
+        // Keep the catalogue populated for any remaining legacy ship definitions.
+        this.shipManager?.syncFromGame();
     }
 
     // Main game update - called each frame

@@ -1,42 +1,84 @@
 import { Game } from '../core/Game';
 
+export interface ShipBlueprintStats {
+    maxHull: number;
+    maxShell: number;
+    regenShell: number;
+    maxEnergy: number;
+    regenEnergy: number;
+    maxSpeed: number;
+    acceleration: number;
+    weight: number;
+    radius: number;
+    value: number;
+}
+
+export interface ShipBlueprintPart {
+    name: string;
+    x: number;
+    y: number;
+    rotation: number;
+    isLoot: boolean;
+    maxHull?: number;
+}
+
+export interface ShipBlueprintComponent {
+    partIndex: number;
+    name: string;
+}
+
+export interface ShipBlueprintVisualSprite {
+    textureKey: string;
+    x: number;
+    y: number;
+    scale?: number;
+}
+
+export interface ShipBlueprintDefinition {
+    superType: string;
+    subType: string;
+    name: string;
+    categoryType: string;
+    stats: ShipBlueprintStats;
+    gameplay: {
+        parts: ShipBlueprintPart[];
+        components: ShipBlueprintComponent[];
+    };
+    visual: {
+        sprites: ShipBlueprintVisualSprite[];
+    };
+}
+
+export type LegacyShipDefinition = [
+    parts: unknown[][],
+    components: unknown[][],
+    superType: string,
+    subType: string,
+    name: string,
+    categoryType: string
+];
+
 /**
- * ShipBlueprint - a stable, named reference to a ship definition.
- *
- * v1 scope (deliberately narrow): this is a thin wrapper around the existing
- * `Game.shipData` table. It does NOT copy or approximate ship statistics - it
- * holds a stable blueprint id plus a source key and resolves the actual
- * definition lazily from Game at build time. That keeps the catalogue safe to
- * populate before or after shipData loads, and it can never go stale because it
- * always reads the live table that Ship.init() already reads.
- *
- * It is intentionally not a data class: it carries no part/component lists of
- * its own. Ship.init() continues to read `Game.shipData[type]` directly, which
- * preserves the existing construction pipeline (Component, Weapon, Ability,
- * ObjectPool) untouched.
+ * Stable catalogue entry for a ship definition. Structured definitions are
+ * owned by the blueprint; legacy definitions continue to resolve from
+ * Game.shipData until their consumers have migrated.
  */
 export class ShipBlueprint {
-    /** Stable, human-readable blueprint id (e.g. "ship.player-freighter"). */
     public readonly id: string;
-
-    /** Key into Game.shipData that this blueprint maps to. */
     public readonly sourceKey: string;
+    public readonly shipDefinition?: ShipBlueprintDefinition;
 
-    constructor(id: string, sourceKey: string) {
+    constructor(id: string, sourceKey: string, shipDefinition?: ShipBlueprintDefinition) {
         this.id = id;
         this.sourceKey = sourceKey;
+        this.shipDefinition = shipDefinition;
     }
 
-    /**
-     * Resolve the underlying ship definition from the live Game.shipData table.
-     * Returns undefined when the source key has not been loaded yet.
-     */
-    get definition(): any {
-        const data = Game.instance?.shipData;
-        return data ? data[this.sourceKey] : undefined;
+    /** Resolve a structured blueprint first, then the legacy tuple if present. */
+    get definition(): ShipBlueprintDefinition | LegacyShipDefinition | undefined {
+        return this.shipDefinition ?? Game.instance?.shipData?.[this.sourceKey];
     }
 
-    /** True when Game.shipData currently contains this blueprint's source key. */
     get isLoaded(): boolean {
         return !!this.definition;
     }

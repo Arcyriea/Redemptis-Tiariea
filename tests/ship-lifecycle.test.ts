@@ -195,22 +195,64 @@ test('characterizes faction counters: spawn does not increment, removal decremen
     assert.deepEqual([game.numAlly, game.numEnemy], [-1, -1]);
 });
 
-test('characterizes current waypoint retention when a pooled ship is reused without new waypoints', () => {
+test('pooled reuse clears and rebuilds parts, components, subtype lists, and waypoints', () => {
     const game = createGame();
-    const ship = game.shipManager!.createShip('undefined-type', 'Ally', 0, 0, {
+    game.shipData.player = [
+        [['central-hull', 0, 0, 0, false]],
+        [['PlayerCannon']],
+        'Ship',
+        'TestShip',
+        'Test Ship',
+        'Air'
+    ];
+    game.componentData = {
+        PlayerCannon: ['Weapon', 'ProjectileArcade', 10, 400, 0.15, 5, 600, 0]
+    };
+
+    const ship = game.shipManager!.createShip('player', 'Ally', 0, 0, {
         randomOffset: 0,
         waypoints: [[10, 20]]
     });
     assert.ok(ship);
+    if (!ship) throw new Error('Expected the configured test ship to be created.');
+    assert.equal(ship.parts.length, 1);
+    assert.equal(ship.components.length, 1);
+    assert.equal(ship.compWeapon.length, 1);
+    assert.equal(ship.compSkill.length, 0);
+    assert.equal(ship.compSpawn.length, 0);
+    assert.equal(ship.compPassive.length, 0);
+
+    const oldPart = ship.parts[0];
+    const oldComponent = ship.components[0];
+    const oldWeapon = oldComponent.effect;
+    oldComponent.ready = false;
     ship.removeIt = true;
     game.updateQueues();
 
-    const reusedShip = game.spawnShip('undefined-type', 'Ally', 30, 40);
+    assert.deepEqual(ship.parts, []);
+    assert.deepEqual(ship.components, []);
+    assert.deepEqual(ship.compWeapon, []);
+    assert.deepEqual(ship.compSkill, []);
+    assert.deepEqual(ship.compSpawn, []);
+    assert.deepEqual(ship.compPassive, []);
+    assert.deepEqual(ship.waypoints, []);
+
+    const reusedShip = game.spawnShip('player', 'Ally', 30, 40);
 
     assert.equal(reusedShip, ship);
-    // Current Ship.init/resetIt do not clear waypoints; this is observed
-    // behavior, not an assertion that retaining an old route is desirable.
-    assert.deepEqual(reusedShip.waypoints, [[10, 20]]);
+    if (!reusedShip) throw new Error('Expected the disposed ship to be reused.');
+    assert.equal(reusedShip.parts.length, 1);
+    assert.notEqual(reusedShip.parts[0], oldPart);
+    assert.equal(reusedShip.components.length, 1);
+    assert.equal(reusedShip.compWeapon.length, 1);
+    assert.equal(reusedShip.compSkill.length, 0);
+    assert.equal(reusedShip.compSpawn.length, 0);
+    assert.equal(reusedShip.compPassive.length, 0);
+    assert.equal(reusedShip.components[0], reusedShip.compWeapon[0]);
+    assert.notEqual(reusedShip.components[0], oldComponent);
+    assert.notEqual(reusedShip.compWeapon[0].effect, oldWeapon);
+    assert.equal(reusedShip.compWeapon[0].ready, true);
+    assert.deepEqual(reusedShip.waypoints, []);
 });
 
 test('clearCurrentSector clears queues, registry, and pool safely when repeated', () => {
