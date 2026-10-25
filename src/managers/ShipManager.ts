@@ -1,6 +1,11 @@
 import { Game } from '../core/Game';
 import { Ship } from '../entities/Ship';
 import { ShipBlueprint, ShipBlueprintDefinition } from './ShipBlueprint';
+import {
+    AISTIARIA,
+    FactionId,
+    YUTIARINALIA
+} from './FactionManager';
 
 /**
  * ShipManager - ship catalogue + centralized ship creation/disposal.
@@ -108,6 +113,8 @@ export class ShipManager {
      *  - waypoints: base-relative waypoint list (each wp offset by x,y).
      *  - taskBehavior: AI/behavior key attached to the ship.
      *  - spawnEffect: when true, emit a Spawn effect at the ship's position.
+     *  - faction: overrides faction membership only; legacy alignment and
+     *    queue destination are unchanged.
      */
     createShip(
         type: string,
@@ -118,6 +125,7 @@ export class ShipManager {
             waypoints?: any[];
             taskBehavior?: any;
             spawnEffect?: boolean;
+            faction?: FactionId;
             /**
              * Half-width of the random spawn jitter, in pixels. When > 0 each
              * ship is offset by (rand-0.5)*randomOffset on both axes, matching
@@ -126,45 +134,90 @@ export class ShipManager {
             randomOffset?: number;
         } = {}
     ): Ship | null {
+        const factionManager = this.game.factionManager;
+        if (!factionManager) {
+            throw new Error('FactionManager is not initialized on Game.');
+        }
+
+        const legacyFaction = this.resolveFaction(alignment);
+        const faction = options.faction ?? legacyFaction;
+        if (!factionManager.isFactionRegistered(faction)) {
+            throw new Error(`Faction "${faction}" is not registered.`);
+        }
+
         const pool = this.game.objectPool;
         if (!pool) return null;
 
         const ship = pool.getShipObject(type, alignment);
         if (!ship) return null;
 
-        // getShipObject() already initialized the ship. Position it, applying the
-        // same per-ship random jitter the spawn queue used to apply inline.
-        const jitter = options.randomOffset ?? 20;
-        ship.x = x + (Math.random() - 0.5) * jitter;
-        ship.y = y + (Math.random() - 0.5) * jitter;
+        let spawnEffect: ReturnType<typeof pool.getEffect> = null;
+        try {
+            factionManager.setFaction(ship, faction);
 
-        // Stable-ID registration exactly once per logical lifetime.
-        // EntityManager detects pooled reuse and issues a fresh id.
-        this.game.entityManager?.register(ship, 'ship');
+            // getShipObject() already initialized the ship. Position it, applying
+            // the same per-ship random jitter the spawn queue used to apply inline.
+            const jitter = options.randomOffset ?? 20;
+            ship.x = x + (Math.random() - 0.5) * jitter;
+            ship.y = y + (Math.random() - 0.5) * jitter;
 
-        if (options.waypoints) {
-            ship.waypoints = options.waypoints.map((wp: any) => [wp[0] + x, wp[1] + y]);
-        }
-        if (options.taskBehavior) {
-            ship.taskBehavior = options.taskBehavior;
-        }
+            // Stable-ID registration exactly once per logical lifetime.
+            // EntityManager detects pooled reuse and issues a fresh id.
+            this.game.entityManager?.register(ship, 'ship');
 
-        // Preserve existing queue-selection behavior: Ally/Enemy only.
-        if (alignment === 'Ally') {
-            this.game.queueAlly.push(ship);
-        } else if (alignment === 'Enemy') {
-            this.game.queueEnemy.push(ship);
-        }
-
-        if (options.spawnEffect) {
-            const spawnEffect = pool.getEffect('Spawn');
-            if (spawnEffect) {
-                spawnEffect.init('Spawn', ship.x, ship.y);
-                this.game.effectsQueue.push(spawnEffect);
+            if (options.waypoints) {
+                ship.waypoints = options.waypoints.map((wp: any) => [wp[0] + x, wp[1] + y]);
             }
+            if (options.taskBehavior) {
+                ship.taskBehavior = options.taskBehavior;
+            }
+
+            // Preserve existing queue-selection behavior: Ally/Enemy only.
+            if (alignment === 'Ally') {
+                this.game.queueAlly.push(ship);
+            } else if (alignment === 'Enemy') {
+                this.game.queueEnemy.push(ship);
+            }
+
+            if (options.spawnEffect) {
+                spawnEffect = pool.getEffect('Spawn');
+                if (spawnEffect) {
+                    spawnEffect.init('Spawn', ship.x, ship.y);
+                    this.game.effectsQueue.push(spawnEffect);
+                }
+            }
+        } catch (error) {
+            for (const queue of [
+                this.game.queueAlly,
+                this.game.queueEnemy,
+                this.game.queueTanks,
+                this.game.queueStations
+            ]) {
+                for (let index = queue.length - 1; index >= 0; index--) {
+                    if (queue[index] === ship) queue.splice(index, 1);
+                }
+            }
+            if (spawnEffect) {
+                const effectIndex = this.game.effectsQueue.indexOf(spawnEffect);
+                if (effectIndex !== -1) this.game.effectsQueue.splice(effectIndex, 1);
+                pool.disposeEffect(spawnEffect);
+            }
+            this.game.entityManager?.unregister(ship);
+            factionManager.clearFaction(ship);
+            pool.disposeShipObject(ship);
+            throw error;
         }
 
         return ship;
+    }
+
+    private resolveFaction(alignment: string): FactionId {
+        if (alignment === 'Ally') return YUTIARINALIA;
+        if (alignment === 'Enemy') return AISTIARIA;
+        throw new Error(
+            `Unsupported alignment label "${alignment}". Only "Ally" and "Enemy" map to a faction; ` +
+            `pass the 'faction' option to spawn a custom faction.`
+        );
     }
 
     // ------------------------------------------------------------------
@@ -179,6 +232,7 @@ export class ShipManager {
     disposeShip(ship: Ship): void {
         if (!ship) return;
         this.game.entityManager?.unregister(ship);
+        this.game.factionManager.clearFaction(ship);
         const pool = this.game.objectPool;
         if (pool) pool.disposeShipObject(ship);
     }

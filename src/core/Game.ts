@@ -7,6 +7,7 @@ import { UIManager, MiniMap } from '../ui/UIManager';
 import { SoundManager } from '../audio/SoundManager';
 import { EntityManager } from '../managers/EntityManager';
 import { ShipManager } from '../managers/ShipManager';
+import { FactionManager } from '../managers/FactionManager';
 
 export class Game {
     // Core game state
@@ -65,6 +66,7 @@ export class Game {
     public objectPool: ObjectPool | null = null;
     public entityManager: EntityManager | null = null;
     public shipManager: ShipManager | null = null;
+    public factionManager!: FactionManager;
 
     // Input state
     public keys: any = {
@@ -83,6 +85,7 @@ export class Game {
     initSystems() {
         this.objectPool = new ObjectPool();
         this.entityManager = new EntityManager();
+        this.factionManager = new FactionManager();
         this.camera = new Camera();
         this.taskManager = new TaskManager();
         this.uiManager = new UIManager();
@@ -181,6 +184,7 @@ export class Game {
             const ship = this.queueAlly[i];
             if (ship.removeIt) {
                 this.entityManager?.unregister(ship);
+                this.factionManager.clearFaction(ship);
                 this.queueAlly.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
                 this.numAlly--;
@@ -194,6 +198,7 @@ export class Game {
             const ship = this.queueEnemy[i];
             if (ship.removeIt) {
                 this.entityManager?.unregister(ship);
+                this.factionManager.clearFaction(ship);
                 this.queueEnemy.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
                 this.numEnemy--;
@@ -207,6 +212,7 @@ export class Game {
             const ship = this.queueTanks[i];
             if (ship.removeIt) {
                 this.entityManager?.unregister(ship);
+                this.factionManager.clearFaction(ship);
                 this.queueTanks.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
             } else if (ship.active) {
@@ -219,6 +225,7 @@ export class Game {
             const ship = this.queueStations[i];
             if (ship.removeIt) {
                 this.entityManager?.unregister(ship);
+                this.factionManager.clearFaction(ship);
                 this.queueStations.splice(i, 1);
                 if (this.objectPool) this.objectPool.disposeShipObject(ship);
             } else if (ship.active) {
@@ -347,6 +354,7 @@ export class Game {
 
         // Clear entity registry
         if (this.entityManager) this.entityManager.clear();
+        this.factionManager.clear();
 
         // Dispose all pooled objects
         if (this.objectPool) this.objectPool.clearAll();

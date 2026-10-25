@@ -3,6 +3,7 @@ import { Game } from './core/Game';
 import { MiniMap } from './ui/MiniMap';
 import { PlanetBackground, PlanetShader } from './entities/background/Planet';
 import { SpaceBackground } from './entities/background/SpaceBackground';
+import { YUTIARINALIA } from './managers/FactionManager';
 
 // Scene to handle loading and generating dummy textures
 class BootScene extends Phaser.Scene {
@@ -228,6 +229,8 @@ class GameScene extends Phaser.Scene {
             this.playerShip = pool.getShipObject(playerBlueprint.sourceKey, "Ally");
 
             if (this.playerShip) {
+                this.engine.factionManager.setFaction(this.playerShip, YUTIARINALIA);
+
                 // Position at container's location
                 this.playerShip.x = this.player.x;
                 this.playerShip.y = this.player.y;
@@ -261,6 +264,7 @@ class GameScene extends Phaser.Scene {
 
         // 1. Unregister from EntityManager (idempotent - safe to call multiple times)
         this.engine.entityManager?.unregister(this.playerShip);
+        this.engine.factionManager.clearFaction(this.playerShip);
 
         // 2. Return to pool via ObjectPool (handles active=false, removeIt=true, resetIt, tractor cleanup)
         this.engine.objectPool?.disposeShipObject(this.playerShip);

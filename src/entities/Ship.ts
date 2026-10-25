@@ -2,6 +2,7 @@ import { Game } from '../core/Game';
 import { Component } from './Component';
 import { TractorEffect } from '../effects/TractorEffect';
 import { ShipBlueprintDefinition, ShipBlueprintPart } from '../managers/ShipBlueprint';
+import { YUTIARINALIA } from '../managers/FactionManager';
 
 export class Ship {
     [x: string]: any;
@@ -312,7 +313,7 @@ export class Ship {
         this.game.playSound("Explosion");
 
         // Award credits & drop loot if enemy destroyed by player
-        if (this.alignment !== "Ally") {
+        if (this.game.factionManager.isEnemyOfFaction(this, YUTIARINALIA)) {
             this.game.credits += Math.round(this.value * 0.001);
             this.game.uiManager.updateCredits();
 

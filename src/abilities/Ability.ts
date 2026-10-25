@@ -106,11 +106,13 @@ export class Ability {
         this.targetedShips = [];
         if (this.areaRadius > 0) {
             if (this.ship) {
-                this.targetedShips = this.game.getShipsInArea(this.ship.x, this.ship.y, this.areaRadius, this.ship.alignment);
+                this.targetedShips = this.game
+                    .getShipsInArea(this.ship.x, this.ship.y, this.areaRadius)
+                    .filter((target) => this.game.factionManager.isAlly(this.ship, target));
             }
-        } else if (this.canTargetAlly && param1 && param1.alignment === this.ship.alignment) {
+        } else if (this.canTargetAlly && param1 && this.game.factionManager.isAlly(this.ship, param1)) {
             this.targetedShips = [param1];
-        } else if (this.canTargetEnemy && param1 && param1.alignment !== this.ship.alignment) {
+        } else if (this.canTargetEnemy && param1 && this.game.factionManager.isEnemy(this.ship, param1)) {
             this.targetedShips = [param1];
         } else if (this.canTargetSelf && this.ship) {
             this.targetedShips = [this.ship];

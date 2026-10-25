@@ -5,6 +5,7 @@ import { ObjectPool } from '../src/core/ObjectPool';
 import { EntityManager } from '../src/managers/EntityManager';
 import { ShipManager } from '../src/managers/ShipManager';
 import { Ship } from '../src/entities/Ship';
+import { AISTIARIA, FactionManager, YUTIARINALIA } from '../src/managers/FactionManager';
 
 function createGame(): Game {
     // This harness bypasses Game's constructor and initSystems(). It supplies
@@ -16,6 +17,7 @@ function createGame(): Game {
     game.shipData = {};
     game.objectPool = new ObjectPool();
     game.entityManager = new EntityManager();
+    game.factionManager = new FactionManager();
     game.shipManager = new ShipManager(game);
     game.queueAlly = [];
     game.queueEnemy = [];
@@ -49,11 +51,14 @@ test('EntityManager registration is idempotent and pooled re-registration gets a
     // disposeShip() expects its caller to remove the ship from its update queue.
     game.queueAlly.splice(game.queueAlly.indexOf(ship), 1);
     game.shipManager!.disposeShip(ship);
+    assert.equal(game.factionManager.getFaction(ship), undefined);
+    assert.equal(game.factionManager.getRelationshipScore(YUTIARINALIA, AISTIARIA), -100);
     game.shipManager!.createShip('undefined-type', 'Ally', 0, 0);
     const reusedShip = game.queueAlly[0];
 
     assert.equal(reusedShip, ship);
     assert.notEqual(reusedShip.id, firstId);
+    assert.equal(game.factionManager.getFaction(reusedShip), YUTIARINALIA);
     assert.equal(game.entityManager!.size, 1);
     assert.equal(game.entityManager!.get(reusedShip.id!), reusedShip);
 });
@@ -113,6 +118,9 @@ test('normal removal unregisters and removes the ship once before pool reuse', (
     assert.deepEqual(game.queueEnemy, []);
     assert.equal(game.entityManager!.has(ally), false);
     assert.equal(game.entityManager!.has(enemy), false);
+    assert.equal(game.factionManager.hasFaction(ally), false);
+    assert.equal(game.factionManager.hasFaction(enemy), false);
+    assert.equal(game.factionManager.getRelationshipScore(YUTIARINALIA, AISTIARIA), -100);
     assert.equal(game.entityManager!.size, 0);
     assert.equal(ally.active, false);
     assert.equal(enemy.active, false);
@@ -281,12 +289,16 @@ test('clearCurrentSector clears queues, registry, and pool safely when repeated'
     assert.deepEqual(game.spawnQueue, []);
     assert.deepEqual(game.respawnQueue, []);
     assert.equal(game.entityManager!.size, 0);
+    assert.equal(game.factionManager.size, 0);
+    assert.equal(game.factionManager.getRelationshipScore(YUTIARINALIA, AISTIARIA), -100);
     assert.equal(ally.active, false);
     assert.equal(enemy.active, false);
     assert.equal(disposeCalls, 2);
 
     game.clearCurrentSector();
     assert.equal(game.entityManager!.size, 0);
+    assert.equal(game.factionManager.size, 0);
+    assert.equal(game.factionManager.getRelationshipScore(YUTIARINALIA, AISTIARIA), -100);
     assert.equal(disposeCalls, 2);
 });
 
