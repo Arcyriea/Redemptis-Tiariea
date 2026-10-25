@@ -46,7 +46,7 @@ Subversive agents that infiltrated the Tiariean society long before they even ma
 ### Doraniaca
 Stolen AI repurposed by the Caliphista, to at the very least extract some values out of the Tiariean's inventions as they override them with their own philosophies and brainwash them to their wills...
 ### Isilica
-A more advanced models but serve a different purposes for Anatra and her faction within the Caliphathic Eden...
+A more advanced models but serve a different purposes for Anatra and her faction within the Caliphathic Eden... Some of them are either left wing or right wing of Anatra herself...
 
 ## Ancestral Ijyiakaryai Origins
 ### Sulmakaraik
@@ -71,7 +71,7 @@ Another invasion forces not have anything to do with the Caliphathic Eden's fait
 
 ### + POTENTIAL ALLIES +
 ## Jurisdictate Council
-Opposed the Caliphathic Eden long before they interacted with the Tiarieans... They are the opposers who once serves the same faith as Isindor, until the very day they rebels and formed the Jurisdiction.
+Opposed the Caliphathic Eden long before they interacted with the modern day Tiarieans... They are the opposers who once serves the same faith as Isindor, until the very day they rebels and formed the Jurisdiction.
 ## United Galactic Federation
 Main rival of the Astral Union, they seek to stop them from destroying more alien races and enslaves the galaxies... They once formed in response against Grimarous Prime and his bioforms, then they oppose the Astral Union
 
