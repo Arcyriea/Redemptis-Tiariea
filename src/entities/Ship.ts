@@ -15,7 +15,6 @@ export class Ship {
 
     // Identity & Properties
     public type: string = "";
-    public alignment: string = "Ally"; // "Ally" or "Enemy"
     public superType: string = "Ship"; // "Ship", "Turret", "Station", "AirDrone", "GroundDrone"
     public subType: string = ""; // "Player", "Commander", "Harvester", "Worker", "Resource", etc.
     public name: string = "";
@@ -79,9 +78,8 @@ export class Ship {
         this.game = Game.instance;
     }
 
-    init(type: string, alignment: string) {
+    init(type: string) {
         this.type = type;
-        this.alignment = alignment;
         this.removeIt = false;
         this.exploding = false;
 
@@ -250,10 +248,9 @@ export class Ship {
     checkCollision() {
         if (this.pacified || !this.moving) return;
 
-        // Check collision against other tanks/drones
-        const tanks = this.game.queueTanks;
-        for (const tank of tanks) {
-            if (tank === this || tank.removeIt || tank.pacified) continue;
+        // Ground drones retain their collision behavior in the shared ship queue.
+        for (const tank of this.game.shipQueue) {
+            if (tank.superType !== "GroundDrone" || tank === this || tank.removeIt || tank.pacified) continue;
 
             const dx = tank.x - this.x;
             const dy = tank.y - this.y;

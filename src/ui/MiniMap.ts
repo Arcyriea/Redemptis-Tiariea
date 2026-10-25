@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { Game } from '../core/Game';
+import { Ship } from '../entities/Ship';
 
 /**
- * MiniMap - ShellCore-style radar showing player, allies, enemies, stations, and planets.
+ * MiniMap - ShellCore-style radar showing ships, stations, and planets.
  * Tracks the player position with zoom support. Dots clip at the circular boundary.
- * Draw order: planets (back) → stations → enemies → allies → player (front).
+ * Draw order: planets (back) → stations → neutral → hostile → friendly → player (front).
  */
 export class MiniMap extends Phaser.GameObjects.Container {
     public gameInstance: Game;
@@ -177,10 +178,15 @@ export class MiniMap extends Phaser.GameObjects.Container {
                my <= playerMinimapY + halfH;
     }
 
+    private findPlayerShip(): Ship | undefined {
+        return this.gameInstance.entityManager?.getAll()
+            .find((entity): entity is Ship => entity instanceof Ship && entity.subType === 'Player');
+    }
+
     /**
      * Main update loop - called from Game.update()
      * Tracks player position and renders all dots clipped to minimap boundary.
-     * Draw order: planets → stations → enemies → allies → player (front)
+     * Draw order: planets → stations → neutral → hostile → friendly → player (front)
      */
     public update(): void {
         if (!this.gameInstance) return;
@@ -193,8 +199,7 @@ export class MiniMap extends Phaser.GameObjects.Container {
         let playerY = 0;
         let foundPlayer = false;
 
-        // Primary: find from gameInstance.shipQueue (the actual AS3 ship data)
-        const playerShip = this.gameInstance.shipQueue.find(s => s.subType === 'Player');
+        const playerShip = this.findPlayerShip();
         if (playerShip && playerShip.active && !playerShip.removeIt) {
             playerX = playerShip.x;
             playerY = playerShip.y;
@@ -228,7 +233,7 @@ export class MiniMap extends Phaser.GameObjects.Container {
         this.updateScreenPosition();
 
         // Draw Unit Dots (clipped to player-centered viewport)
-        // ORDER: Planets (back) → Stations → Enemies → Allies → Player (front)
+        // ORDER: Planets → Stations → Neutral → Hostile → Friendly → Player
         this.dotsGraphics.clear();
 
         // 1. Planet Dots (Yellow/Neutral, larger - radius scaled) - DRAWN FIRST (back)
@@ -244,10 +249,10 @@ export class MiniMap extends Phaser.GameObjects.Container {
             }
         }
 
-        // 2. Stations / Resource Dots (Grey/Neutral)
+        // 2. Stations remain visually distinct from faction relationships.
         this.dotsGraphics.fillStyle(0x888888, 1);
-        for (const ship of this.gameInstance.queueStations) {
-            if (ship.removeIt) continue;
+        for (const ship of this.gameInstance.shipQueue) {
+            if (ship.removeIt || (ship.superType !== 'Station' && ship.superType !== 'Turret')) continue;
             const mx = ship.x * this.scaleFactor;
             const my = ship.y * this.scaleFactor;
             if (this.isInViewport(mx, my, 3, playerMinimapX, playerMinimapY)) {
@@ -255,25 +260,22 @@ export class MiniMap extends Phaser.GameObjects.Container {
             }
         }
 
-        // 3. Enemy Dots (Red)
-        this.dotsGraphics.fillStyle(0xff0000, 1);
-        for (const ship of this.gameInstance.queueEnemy) {
-            if (ship.removeIt) continue;
-            const mx = ship.x * this.scaleFactor;
-            const my = ship.y * this.scaleFactor;
-            if (this.isInViewport(mx, my, 2, playerMinimapX, playerMinimapY)) {
-                this.dotsGraphics.fillCircle(mx, my, 2);
-            }
-        }
-
-        // 4. Ally Dots (Green) - drawn after enemies so they appear on top
-        this.dotsGraphics.fillStyle(0x00ff00, 1);
-        for (const ship of this.gameInstance.queueAlly) {
-            if (ship.removeIt || ship.subType === 'Player') continue;
-            const mx = ship.x * this.scaleFactor;
-            const my = ship.y * this.scaleFactor;
-            if (this.isInViewport(mx, my, 2, playerMinimapX, playerMinimapY)) {
-                this.dotsGraphics.fillCircle(mx, my, 2);
+        const relationshipColors = [
+            { relationship: 'Neutral' as const, color: 0xaaaaaa },
+            { relationship: 'Enemy' as const, color: 0xff0000 },
+            { relationship: 'Ally' as const, color: 0x00ff00 }
+        ];
+        for (const { relationship, color } of relationshipColors) {
+            this.dotsGraphics.fillStyle(color, 1);
+            for (const ship of this.gameInstance.shipQueue) {
+                if (ship.removeIt || ship === playerShip ||
+                    ship.superType === 'Station' || ship.superType === 'Turret') continue;
+                if (this.gameInstance.factionManager.getRelationship(playerShip, ship) !== relationship) continue;
+                const mx = ship.x * this.scaleFactor;
+                const my = ship.y * this.scaleFactor;
+                if (this.isInViewport(mx, my, 2, playerMinimapX, playerMinimapY)) {
+                    this.dotsGraphics.fillCircle(mx, my, 2);
+                }
             }
         }
 
@@ -282,7 +284,7 @@ export class MiniMap extends Phaser.GameObjects.Container {
         this.dotsGraphics.fillCircle(playerMinimapX, playerMinimapY, 5);
 
         // Update Objective Arrow
-        this.updateArrow(playerMinimapX, playerMinimapY);
+        this.updateArrow(playerMinimapX, playerMinimapY, playerShip);
     }
 
     /** Position minimap at top-right of screen (handles % dimensions via camera). */
@@ -294,7 +296,7 @@ export class MiniMap extends Phaser.GameObjects.Container {
         this.setPosition(screenW - this.borderWidth - padding, padding);
     }
 
-    private updateArrow(playerMinimapX: number, playerMinimapY: number): void {
+    private updateArrow(playerMinimapX: number, playerMinimapY: number, playerShip?: Ship): void {
         const currentTask = this.gameInstance.tasks?.[0];
         if (!currentTask) {
             this.arrowSprite.setVisible(false);
@@ -337,7 +339,6 @@ export class MiniMap extends Phaser.GameObjects.Container {
             this.arrowSprite.y = ay - this.dotsContainer.y;
 
             // Rotate arrow towards actual target direction
-            const playerShip = this.gameInstance.shipQueue.find(s => s.subType === 'Player');
             if (playerShip) {
                 const dx = targetX - playerShip.x;
                 const dy = targetY - playerShip.y;

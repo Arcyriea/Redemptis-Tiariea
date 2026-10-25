@@ -13,7 +13,8 @@ A Phaser 2D game project, initially translated from ActionScript (AS3).
 ## Key Systems
 
 - **Object Pooling:** `src/core/ObjectPool.ts` is used for efficient management of game objects like ships, projectiles, and effects.
-- **Entity Management:** `src/managers/EntityManager.ts` provides a shared registry for registering, looking up, and unregistering entities by stable unique ID. It is orthogonal to the iteration queues (queueAlly, queueEnemy, etc.) — those handle per-frame updates; EntityManager handles O(1) lookup by ID.
+- **Entity Management:** `src/managers/EntityManager.ts` provides a shared registry for registering, looking up, and unregistering entities by stable unique ID. Managed ships use the single `Game.shipQueue` for per-frame updates; faction identity and relationships are maintained separately by `FactionManager`.
+- **Factions:** `src/managers/FactionManager.ts` owns registered faction identity, ship membership, and symmetric faction-pair relationship scores. Ship spawning requires an explicit registered faction, and combat/targeting relationships are independent of update-queue placement.
 - **Scene Management:** The game uses Phaser scenes for booting and gameplay.
 - **Physics:** Utilizes Phaser Arcade Physics.
 

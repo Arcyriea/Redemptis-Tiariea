@@ -29,7 +29,7 @@ export class ObjectPool {
     }
 
     // Ship pooling
-    public getShipObject(type: string, alignment: string = "Ally"): Ship | null {
+    public getShipObject(type: string): Ship | null {
         let pool = this.shipPool.get(type);
         if (!pool) {
             pool = [];
@@ -39,7 +39,7 @@ export class ObjectPool {
         // Find an inactive ship of this type
         for (const ship of pool) {
             if (!ship.active || ship.removeIt) {
-                ship.init(type, alignment);
+                ship.init(type);
                 ship.active = true;
                 ship.removeIt = false;
                 return ship;
@@ -48,7 +48,7 @@ export class ObjectPool {
 
         // Create new if none available
         const ship = new Ship();
-        ship.init(type, alignment);
+        ship.init(type);
         ship.active = true;
         pool.push(ship);
         return ship;

@@ -47,14 +47,13 @@ test('player blueprint is catalogue-backed and separates gameplay from visuals',
 
 test('Ship.init builds the player runtime ship and preserves its effective stats', () => {
     const game = createConfiguredGame();
-    const ship = game.objectPool!.getShipObject('player', 'Ally');
+    const ship = game.objectPool!.getShipObject('player');
 
     assert.ok(ship);
     if (!ship) throw new Error('Expected the player ship to be acquired.');
     assert.deepEqual(
         {
             type: ship.type,
-            alignment: ship.alignment,
             superType: ship.superType,
             subType: ship.subType,
             name: ship.name,
@@ -70,7 +69,6 @@ test('Ship.init builds the player runtime ship and preserves its effective stats
         },
         {
             type: 'player',
-            alignment: 'Ally',
             superType: 'Ship',
             subType: 'Player',
             name: 'Player Ship',
@@ -126,7 +124,7 @@ test('legacy ship definitions remain available through the existing catalogue', 
     if (!blueprint) throw new Error('Expected the legacy ship blueprint to be registered.');
     assert.equal(blueprint.definition, legacyDefinition);
 
-    const ship = game.objectPool!.getShipObject('legacy', 'Enemy');
+    const ship = game.objectPool!.getShipObject('legacy');
     assert.ok(ship);
     if (!ship) throw new Error('Expected the legacy ship to be acquired.');
     assert.equal(ship.subType, 'Legacy');

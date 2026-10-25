@@ -47,6 +47,8 @@ export const HAYAKIYIAI: FactionId = createFactionId('Hayakiyiai');
 
 export const FREE_INNOMINI: FactionId = createFactionId('Free Innomini');
 
+// Pre-register reserved lore IDs so they can receive memberships immediately;
+// their relationships remain neutral until configured.
 export const RESERVED_FACTIONS: readonly FactionId[] = [
     VERDANIA,
     HARMONICA,
@@ -66,6 +68,11 @@ export const RESERVED_FACTIONS: readonly FactionId[] = [
     JURISDICTATE_COUNCIL,
     UNITED_GALACTIC_FEDERATION,
     ELVEN_IJYIAKARYAI,
+    MERASSYILRI,
+    NIARIEKYIAI,
+    KISARAKYIL,
+    SAKIGARAIK,
+    HAYAKIYIAI,
     FREE_INNOMINI
 ];
 

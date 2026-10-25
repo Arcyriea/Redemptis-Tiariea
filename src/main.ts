@@ -226,7 +226,7 @@ class GameScene extends Phaser.Scene {
         // CREATE PLAYER SHIP VIA OBJECT POOL (Step 3)
         const pool = this.engine.objectPool;
         if (pool) {
-            this.playerShip = pool.getShipObject(playerBlueprint.sourceKey, "Ally");
+            this.playerShip = pool.getShipObject(playerBlueprint.sourceKey);
 
             if (this.playerShip) {
                 this.engine.factionManager.setFaction(this.playerShip, YUTIARINALIA);

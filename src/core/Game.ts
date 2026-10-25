@@ -7,7 +7,7 @@ import { UIManager, MiniMap } from '../ui/UIManager';
 import { SoundManager } from '../audio/SoundManager';
 import { EntityManager } from '../managers/EntityManager';
 import { ShipManager } from '../managers/ShipManager';
-import { FactionManager } from '../managers/FactionManager';
+import { FactionId, FactionManager } from '../managers/FactionManager';
 
 export class Game {
     // Core game state
@@ -18,14 +18,10 @@ export class Game {
 
     // Queues (similar to ActionScript vectors)
     public shipQueue: Ship[] = [];
-    public queueAlly: Ship[] = [];
-    public queueEnemy: Ship[] = [];
-    public queueTanks: Ship[] = []; // Ground drones, tanks
-    public queueStations: Ship[] = []; // Stations/turrets
     public effectsQueue: any[] = []; // Effects (explosions, spawns)
     public queueResource: any[] = []; // Resource objects
     public pupQueue: any[] = []; // Power-ups
-    public spawnQueue: any[] = []; // Spawn queue [type, count, alignment, x, y, waypoints, ...]
+    public spawnQueue: any[] = []; // [type, count, faction, x, y, waypoints, shipData, taskBehavior]
     public respawnQueue: Ship[] = [];
 
     // Game data
@@ -43,12 +39,6 @@ export class Game {
     public score: number = 0;
     public power: number = 100; // Player power/energy
     public maxPower: number = 100;
-    public globalBuffsAlly: any = null;
-    public globalBuffsEnemy: any = null;
-    public controlBonusAlly: number = 0;
-    public controlBonusEnemy: number = 0;
-    public numAlly: number = 0;
-    public numEnemy: number = 0;
     public homeSector: string = "";
     public lowFps: boolean = false;
 
@@ -179,55 +169,10 @@ export class Game {
     }
 
     updateQueues() {
-        // Update ally ships
-        for (let i = this.queueAlly.length - 1; i >= 0; i--) {
-            const ship = this.queueAlly[i];
+        for (let i = this.shipQueue.length - 1; i >= 0; i--) {
+            const ship = this.shipQueue[i];
             if (ship.removeIt) {
-                this.entityManager?.unregister(ship);
-                this.factionManager.clearFaction(ship);
-                this.queueAlly.splice(i, 1);
-                if (this.objectPool) this.objectPool.disposeShipObject(ship);
-                this.numAlly--;
-            } else if (ship.active) {
-                ship.update();
-            }
-        }
-
-        // Update enemy ships
-        for (let i = this.queueEnemy.length - 1; i >= 0; i--) {
-            const ship = this.queueEnemy[i];
-            if (ship.removeIt) {
-                this.entityManager?.unregister(ship);
-                this.factionManager.clearFaction(ship);
-                this.queueEnemy.splice(i, 1);
-                if (this.objectPool) this.objectPool.disposeShipObject(ship);
-                this.numEnemy--;
-            } else if (ship.active) {
-                ship.update();
-            }
-        }
-
-        // Update tanks
-        for (let i = this.queueTanks.length - 1; i >= 0; i--) {
-            const ship = this.queueTanks[i];
-            if (ship.removeIt) {
-                this.entityManager?.unregister(ship);
-                this.factionManager.clearFaction(ship);
-                this.queueTanks.splice(i, 1);
-                if (this.objectPool) this.objectPool.disposeShipObject(ship);
-            } else if (ship.active) {
-                ship.update();
-            }
-        }
-
-        // Update stations
-        for (let i = this.queueStations.length - 1; i >= 0; i--) {
-            const ship = this.queueStations[i];
-            if (ship.removeIt) {
-                this.entityManager?.unregister(ship);
-                this.factionManager.clearFaction(ship);
-                this.queueStations.splice(i, 1);
-                if (this.objectPool) this.objectPool.disposeShipObject(ship);
+                this.shipManager?.disposeShip(ship);
             } else if (ship.active) {
                 ship.update();
             }
@@ -251,15 +196,22 @@ export class Game {
     }
 
     processSpawnQueue() {
-        // Process [type, count, alignment, x, y, waypoints, shipData, ...] entries
+        // Spawn tuple: [type, count, faction, x, y, waypoints, shipData, taskBehavior].
         while (this.spawnQueue.length > 0) {
-            const spawnData = this.spawnQueue.shift();
-            if (!spawnData) continue;
+            const spawnData = this.spawnQueue[0];
+            if (!spawnData) {
+                this.spawnQueue.shift();
+                continue;
+            }
 
-            const [type, count, alignment, x, y, waypoints, shipData, taskBehavior] = spawnData;
+            const [type, count, faction, x, y, waypoints, , taskBehavior] = spawnData;
+            if (!this.factionManager.isFactionRegistered(faction)) {
+                throw new Error(`Faction "${faction}" is not registered.`);
+            }
+            this.spawnQueue.shift();
 
             for (let i = 0; i < count; i++) {
-                this.shipManager?.createShip(type, alignment, x, y, {
+                this.shipManager?.createShip(type, faction, x, y, {
                     waypoints,
                     taskBehavior,
                     spawnEffect: true
@@ -272,7 +224,6 @@ export class Game {
         while (this.respawnQueue.length > 0) {
             const ship = this.respawnQueue.shift();
             if (ship) {
-                // Handle respawn logic
                 this.shipManager?.disposeShip(ship);
             }
         }
@@ -285,8 +236,14 @@ export class Game {
     }
 
     // Ship creation helpers
-    spawnShip(type: string, alignment: string, x: number, y: number, waypoints: any[] = null): Ship {
-        return this.shipManager?.createShip(type, alignment, x, y, {
+    spawnShip(
+        type: string,
+        faction: FactionId,
+        x: number,
+        y: number,
+        waypoints: any[] = null
+    ): Ship {
+        return this.shipManager?.createShip(type, faction, x, y, {
             waypoints: waypoints ?? undefined,
             randomOffset: 0 // exact placement for direct spawnShip calls
         }) ?? null;
@@ -342,10 +299,6 @@ export class Game {
     clearCurrentSector() {
         // Clear all queues and objects
         this.shipQueue = [];
-        this.queueAlly = [];
-        this.queueEnemy = [];
-        this.queueTanks = [];
-        this.queueStations = [];
         this.effectsQueue = [];
         this.queueResource = [];
         this.pupQueue = [];
@@ -387,8 +340,8 @@ export class Game {
         // Process ships defined in sector
         if (sectorData.ships) {
             for (const shipDef of sectorData.ships) {
-                const [type, count, alignment, x, y, waypoints, task] = shipDef;
-                this.spawnQueue.push([type, count, alignment, x + sectorData.coordinates[0],
+                const [type, count, faction, x, y, waypoints, task] = shipDef;
+                this.spawnQueue.push([type, count, faction, x + sectorData.coordinates[0],
                                     y + sectorData.coordinates[1], waypoints, null, task]);
             }
         }
@@ -404,25 +357,19 @@ export class Game {
                y <= sector.coordinates[1] + sector.size[1];
     }
 
-    // Get ships in area (for abilities like Boost)
-    getShipsInArea(x: number, y: number, radius: number, alignment: string = null): Ship[] {
-        const ships = [];
-        const searchQueue = alignment ?
-            (alignment === "Ally" ? this.queueAlly : this.queueEnemy) :
-            [...this.queueAlly, ...this.queueEnemy];
-
-        for (const ship of searchQueue) {
+    // Find active managed ships in an area, optionally restricted to one faction.
+    getShipsInArea(x: number, y: number, radius: number, faction?: FactionId): Ship[] {
+        const ships: Ship[] = [];
+        for (const ship of this.shipQueue) {
             if (!ship || ship.removeIt) continue;
+            if (faction && this.factionManager.getFaction(ship) !== faction) continue;
 
             const dx = ship.x - x;
             const dy = ship.y - y;
             const distSq = dx * dx + dy * dy;
 
             if (distSq <= radius * radius) {
-                // Check alignment if specified
-                if (alignment === null || ship.alignment === alignment) {
-                    ships.push(ship);
-                }
+                ships.push(ship);
             }
         }
 

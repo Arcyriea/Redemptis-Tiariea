@@ -1,4 +1,5 @@
 import { Game } from '../core/Game';
+import { Ship } from '../entities/Ship';
 
 export class MiniMap {
     public game: Game;
@@ -27,26 +28,25 @@ export class MiniMap {
         this.graphics.lineStyle(1, 0x444444, 1);
         this.graphics.strokeRect(this.x, this.y, this.width, this.height);
 
-        // Draw ally dots
-        this.graphics.fillStyle(0x00ff00, 1);
-        for (const ship of this.game.queueAlly) {
-            if (ship.removeIt) continue;
-            const px = this.x + (ship.x * this.scaleFactor) % this.width;
-            const py = this.y + (ship.y * this.scaleFactor) % this.height;
-            this.graphics.fillCircle(px, py, 2);
-        }
-
-        // Draw enemy dots
-        this.graphics.fillStyle(0xff0000, 1);
-        for (const ship of this.game.queueEnemy) {
-            if (ship.removeIt) continue;
-            const px = this.x + (ship.x * this.scaleFactor) % this.width;
-            const py = this.y + (ship.y * this.scaleFactor) % this.height;
-            this.graphics.fillCircle(px, py, 2);
+        const player = this.game.entityManager?.getAll()
+            .find((entity): entity is Ship => entity instanceof Ship && entity.subType === 'Player');
+        const relationshipColors = [
+            { relationship: 'Neutral' as const, color: 0xaaaaaa },
+            { relationship: 'Enemy' as const, color: 0xff0000 },
+            { relationship: 'Ally' as const, color: 0x00ff00 }
+        ];
+        for (const { relationship, color } of relationshipColors) {
+            this.graphics.fillStyle(color, 1);
+            for (const ship of this.game.shipQueue) {
+                if (ship.removeIt || ship === player ||
+                    this.game.factionManager.getRelationship(player, ship) !== relationship) continue;
+                const px = this.x + (ship.x * this.scaleFactor) % this.width;
+                const py = this.y + (ship.y * this.scaleFactor) % this.height;
+                this.graphics.fillCircle(px, py, 2);
+            }
         }
 
         // Draw player indicator
-        const player = this.game.queueAlly.find(s => s.subType === "Player");
         if (player) {
             this.graphics.fillStyle(0x00ffff, 1);
             const px = this.x + (player.x * this.scaleFactor) % this.width;

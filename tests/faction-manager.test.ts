@@ -27,10 +27,6 @@ function createGame(): Game {
     game.entityManager = new EntityManager();
     game.factionManager = new FactionManager();
     game.shipManager = new ShipManager(game);
-    game.queueAlly = [];
-    game.queueEnemy = [];
-    game.queueTanks = [];
-    game.queueStations = [];
     game.shipQueue = [];
     game.effectsQueue = [];
     game.queueResource = [];
@@ -60,7 +56,7 @@ test('registers every README faction as reserved with no configured relationship
 
     assert.equal(new Set(RESERVED_FACTIONS).size, RESERVED_FACTIONS.length);
     assert.deepEqual(RESERVED_FACTIONS, [
-        'Verdania Principality',
+        'Verdania',
         'Harmonica',
         'Imperica',
         'Evangelista',
@@ -78,6 +74,11 @@ test('registers every README faction as reserved with no configured relationship
         'Jurisdictate Council',
         'United Galactic Federation',
         'Elven Ijyiakaryai',
+        'Merassyilri',
+        'Niariekyiai',
+        'Kisarakyil',
+        'Sakigaraik',
+        'Hayakiyiai',
         'Free Innomini'
     ]);
     for (const faction of RESERVED_FACTIONS) {
@@ -228,58 +229,114 @@ test('clear removes memberships but preserves faction-pair scores', () => {
     assert.equal(manager.getFactionRelationship(YUTIARINALIA, AISTIARIA), 'Enemy');
 });
 
-test('ships retain legacy queue routing while faction overrides only membership', () => {
+test('ships of different factions share the same managed ship queue', () => {
     const game = createGame();
     const zurg = createFactionId('Zurg');
     game.factionManager.registerFaction(zurg);
 
-    const ally = game.shipManager!.createShip('ship', 'Ally', 0, 0, { randomOffset: 0 });
-    const enemy = game.shipManager!.createShip('ship', 'Enemy', 0, 0, {
-        randomOffset: 0,
-        faction: zurg
-    });
+    const yutiarinaliaShip = game.shipManager!.createShip('ship', YUTIARINALIA, 0, 0, { randomOffset: 0 });
+    const aistiariaShip = game.shipManager!.createShip('ship', AISTIARIA, 0, 0, { randomOffset: 0 });
+    const customFactionShip = game.shipManager!.createShip('ship', zurg, 0, 0, { randomOffset: 0 });
 
-    assert.equal(game.factionManager.getFaction(ally), YUTIARINALIA);
-    assert.equal(game.factionManager.getFaction(enemy), zurg);
-    assert.equal(enemy.alignment, 'Enemy');
-    assert.deepEqual(game.queueAlly, [ally]);
-    assert.deepEqual(game.queueEnemy, [enemy]);
+    assert.deepEqual(game.shipQueue, [yutiarinaliaShip, aistiariaShip, customFactionShip]);
+    assert.equal(game.factionManager.getFaction(yutiarinaliaShip), YUTIARINALIA);
+    assert.equal(game.factionManager.getFaction(aistiariaShip), AISTIARIA);
+    assert.equal(game.factionManager.getFaction(customFactionShip), zurg);
+});
+
+test('explicit custom factions spawn through Game APIs and general lifecycle queue', () => {
+    const game = createGame();
+    const verdania = RESERVED_FACTIONS[0];
+
+    const directShip = game.spawnShip('ship', verdania, 10, 20);
+    assert.ok(directShip);
+    assert.equal(game.factionManager.getFaction(directShip), verdania);
+    assert.deepEqual(game.shipQueue, [directShip]);
+
+    game.spawnQueue.push(['ship', 1, verdania, 30, 40]);
+    game.processSpawnQueue();
+    const queuedShip = game.shipQueue[1];
+
+    assert.equal(game.spawnQueue.length, 0);
+    assert.equal(game.factionManager.getFaction(queuedShip), verdania);
+    assert.equal(game.entityManager!.has(queuedShip), true);
+
+    let updateCalls = 0;
+    queuedShip.update = () => { updateCalls++; };
+    game.updateQueues();
+    assert.equal(updateCalls, 1);
+
+    queuedShip.removeIt = true;
+    game.updateQueues();
+    assert.deepEqual(game.shipQueue, [directShip]);
+    assert.equal(game.entityManager!.has(queuedShip), false);
+    assert.equal(game.factionManager.hasFaction(queuedShip), false);
+    assert.equal(queuedShip.active, false);
+
+    const reusedShip = game.spawnShip('ship', AISTIARIA, 50, 60);
+    assert.equal(reusedShip, queuedShip);
+    assert.equal(game.factionManager.getFaction(reusedShip), AISTIARIA);
+    assert.deepEqual(game.shipQueue, [directShip, reusedShip]);
+});
+
+test('rejects unregistered faction IDs before mutating ship lifecycle state', () => {
+    const game = createGame();
+    const unregistered = createFactionId('NotRegistered');
+
     assert.throws(
-        () => game.shipManager!.createShip('ship', 'Zurg', 0, 0, { faction: zurg }),
-        /Unsupported alignment label/
+        () => game.spawnShip('ship', unregistered, 0, 0),
+        /not registered/
     );
-    assert.equal(game.queueAlly.length, 1);
-    assert.equal(game.queueEnemy.length, 1);
+    game.spawnQueue.push(['ship', 1, unregistered, 0, 0]);
+    assert.throws(() => game.processSpawnQueue(), /not registered/);
+    assert.equal(game.spawnQueue.length, 1);
+    assert.deepEqual(game.shipQueue, []);
+    assert.equal(game.entityManager!.size, 0);
+});
+
+test('faction combat targeting is independent of ship queue order', () => {
+    const game = createGame();
+    const targetFaction = RESERVED_FACTIONS[0];
+    game.factionManager.setRelationshipScore(YUTIARINALIA, targetFaction, -50);
+
+    const attacker = game.spawnShip('ship', YUTIARINALIA, 0, 0);
+    const target = game.spawnShip('ship', targetFaction, 0, 0);
+    assert.ok(attacker);
+    assert.ok(target);
+    assert.deepEqual(game.shipQueue, [attacker, target]);
+
+    const ability = new Ability();
+    ability.ship = attacker;
+    ability.canTargetEnemy = true;
+    assert.equal(ability.activate(target), true);
+    assert.deepEqual(ability.targetedShips, [target]);
 });
 
 test('pooled ship reuse clears its old faction and assigns the new faction', () => {
     const game = createGame();
-    const ship = game.shipManager!.createShip('ship', 'Ally', 0, 0, { randomOffset: 0 });
+    const ship = game.shipManager!.createShip('ship', YUTIARINALIA, 0, 0, { randomOffset: 0 });
     assert.ok(ship);
     if (!ship) throw new Error('Expected the ally ship to be created.');
     const firstId = ship.id;
-    game.queueAlly.splice(game.queueAlly.indexOf(ship), 1);
     game.shipManager!.disposeShip(ship);
 
     assert.equal(game.factionManager.getFaction(ship), undefined);
-    const reusedShip = game.shipManager!.createShip('ship', 'Enemy', 0, 0, { randomOffset: 0 });
+    assert.deepEqual(game.shipQueue, []);
+    const reusedShip = game.shipManager!.createShip('ship', AISTIARIA, 0, 0, { randomOffset: 0 });
 
     assert.equal(reusedShip, ship);
     assert.notEqual(reusedShip!.id, firstId);
     assert.equal(game.factionManager.getFaction(reusedShip), AISTIARIA);
-    assert.deepEqual(game.queueEnemy, [ship]);
+    assert.deepEqual(game.shipQueue, [ship]);
 });
 
-test('ability targeting and destruction rewards use faction relationships, not alignment', () => {
+test('ability targeting and destruction rewards use faction relationships', () => {
     const game = createGame();
     const zurg = createFactionId('Zurg');
     game.factionManager.registerFaction(zurg);
     game.factionManager.setRelationshipScore(YUTIARINALIA, zurg, 50);
-    const ally = game.shipManager!.createShip('ship', 'Ally', 0, 0, { randomOffset: 0 });
-    const sameFaction = game.shipManager!.createShip('ship', 'Enemy', 0, 0, {
-        randomOffset: 0,
-        faction: zurg
-    });
+    const ally = game.shipManager!.createShip('ship', YUTIARINALIA, 0, 0, { randomOffset: 0 });
+    const sameFaction = game.shipManager!.createShip('ship', zurg, 0, 0, { randomOffset: 0 });
     assert.ok(ally);
     assert.ok(sameFaction);
     if (!ally || !sameFaction) throw new Error('Expected both test ships to be created.');
@@ -301,37 +358,34 @@ test('ability targeting and destruction rewards use faction relationships, not a
         sameFaction.explode();
         assert.equal(game.credits, 10);
 
-        const alliedFactionEnemyAlignment = game.shipManager!.createShip('ship', 'Enemy', 0, 0, {
-            randomOffset: 0,
-            faction: YUTIARINALIA
-        });
-        assert.ok(alliedFactionEnemyAlignment);
-        if (!alliedFactionEnemyAlignment) throw new Error('Expected the ally-faction ship to be created.');
-        alliedFactionEnemyAlignment.value = 10000;
-        alliedFactionEnemyAlignment.explode();
+        const sameFactionShip = game.shipManager!.createShip('ship', YUTIARINALIA, 0, 0, { randomOffset: 0 });
+        assert.ok(sameFactionShip);
+        if (!sameFactionShip) throw new Error('Expected the same-faction ship to be created.');
+        sameFactionShip.value = 10000;
+        sameFactionShip.explode();
         assert.equal(game.credits, 10);
     } finally {
         Math.random = originalRandom;
     }
 });
 
-test('spawn failure rolls back queues, entity registration, and faction membership', () => {
+test('spawn failure rolls back the managed queue, entity registration, and faction membership', () => {
     const game = createGame();
     let failedShip: import('../src/entities/Ship').Ship | undefined;
-    const push = game.queueAlly.push.bind(game.queueAlly);
-    game.queueAlly.push = (...ships) => {
+    const push = game.shipQueue.push.bind(game.shipQueue);
+    game.shipQueue.push = (...ships) => {
         failedShip = ships[0];
         push(...ships);
         throw new Error('queue insertion failed');
     };
 
     assert.throws(
-        () => game.shipManager!.createShip('ship', 'Ally', 0, 0, { randomOffset: 0 }),
+        () => game.shipManager!.createShip('ship', YUTIARINALIA, 0, 0, { randomOffset: 0 }),
         /queue insertion failed/
     );
     assert.ok(failedShip);
-    Reflect.deleteProperty(game.queueAlly, 'push');
-    assert.deepEqual(game.queueAlly, []);
+    Reflect.deleteProperty(game.shipQueue, 'push');
+    assert.deepEqual(game.shipQueue, []);
     assert.equal(game.entityManager!.has(failedShip!), false);
     assert.equal(game.entityManager!.size, 0);
     assert.equal(game.factionManager.getFaction(failedShip), undefined);
@@ -343,12 +397,12 @@ test('ship creation rejects unregistered factions and a missing faction manager'
     const zurg = createFactionId('Zurg');
 
     assert.throws(
-        () => game.shipManager!.createShip('ship', 'Ally', 0, 0, { faction: zurg }),
+        () => game.shipManager!.createShip('ship', zurg, 0, 0),
         /not registered/
     );
     game.factionManager = undefined!;
     assert.throws(
-        () => game.shipManager!.createShip('ship', 'Ally', 0, 0),
+        () => game.shipManager!.createShip('ship', YUTIARINALIA, 0, 0),
         /FactionManager/
     );
 });

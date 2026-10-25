@@ -13,10 +13,9 @@ import { Entity } from '../entities/Entity';
  *  - This is a registry, not a container. It tracks references; it never creates
  *    entities and never destroys them. The Game loop and ObjectPool own creation
  *    and disposal. EntityManager only adds/removes the bookkeeping entries.
- *  - It is intentionally orthogonal to the existing queue arrays
- *    (queueAlly, queueEnemy, ...). Those arrays are the iteration backbone for
- *    the update loop; this manager is the lookup backbone for code that needs to
- *    find a specific entity by ID. Both are kept in sync by Game.
+ *  - It is intentionally orthogonal to Game.shipQueue, which is the iteration
+ *    backbone for managed ships. This manager is the lookup backbone for code
+ *    that needs to find a specific entity by ID; both are kept in sync by Game.
  *  - IDs are stable for the lifetime of an entity and are never reused, so a
  *    stale ID can never resolve to a different entity after a respawn.
  */
