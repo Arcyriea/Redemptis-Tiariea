@@ -123,7 +123,14 @@ export class PhysicsProjectile extends Phaser.Physics.Arcade.Sprite {
     }
 
     public onHitTarget() {
-        if (this.lifespanTimer) this.lifespanTimer.remove();
         this.destroy();
+    }
+
+    override destroy(fromScene?: boolean): void {
+        if (this.lifespanTimer) {
+            this.lifespanTimer.remove();
+            this.lifespanTimer = null;
+        }
+        super.destroy(fromScene);
     }
 }

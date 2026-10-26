@@ -264,31 +264,21 @@ class GameScene extends Phaser.Scene {
     }
 
     private cleanupPlayerShip(): void {
-        if (!this.playerShip) return;
+        if (this.playerShip) {
+            // Unregister from EntityManager and return the ship to its object pool.
+            this.engine.entityManager?.unregister(this.playerShip);
+            this.engine.factionManager.clearFaction(this.playerShip);
+            this.engine.objectPool?.disposeShipObject(this.playerShip);
 
-        // 1. Unregister from EntityManager (idempotent - safe to call multiple times)
-        this.engine.entityManager?.unregister(this.playerShip);
-        this.engine.factionManager.clearFaction(this.playerShip);
-
-        // 2. Return to pool via ObjectPool (handles active=false, removeIt=true, resetIt, tractor cleanup)
-        this.engine.objectPool?.disposeShipObject(this.playerShip);
-
-        // 3. Clear back-references to prevent retaining scene/physics body
-        this.playerShip.phaserScene = null;
-        this.playerShip.phaserBody = null;
-        this.playerShip.sprite = null;
-
-        // 4. Null out our reference
-        this.playerShip = null;
-
-        // 5. Clear projectiles group - Phaser scene shutdown destroys physics world,
-        // but explicit clear ensures no dangling references
-        if (this.projectiles) {
-            this.projectiles.clear(true, true); // destroy children, remove from physics
+            // Clear back-references to prevent retaining scene/physics body.
+            this.playerShip.phaserScene = null;
+            this.playerShip.phaserBody = null;
+            this.playerShip.sprite = null;
+            this.playerShip = null;
         }
 
-        // 6. Return active projectiles to pool (preserves pool across scene restarts)
-        this.engine.projectileManager?.clear();
+        // Release manager references; Phaser destroys the scene-owned group on shutdown.
+        this.engine.projectileManager?.unbindScene(this);
     }
 
     update(time, delta) {

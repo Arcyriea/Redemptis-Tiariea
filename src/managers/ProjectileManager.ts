@@ -43,6 +43,7 @@ export class ProjectileManager {
     private readonly game: Game;
     private scene: Phaser.Scene | null = null;
     private physicsGroup: any = null;
+    private ownsPhysicsGroup = false;
 
     private pool: any[] = [];  // type erased to avoid top-level PhysicsProjectile import
     private active: any[] = [];
@@ -71,12 +72,40 @@ export class ProjectileManager {
      * manager creates its own group.
      */
     bindScene(scene: Phaser.Scene, existingGroup?: any): void {
-        if (this.scene === scene) return;
-        if (this.scene && this.scene !== scene) {
-            throw new Error('ProjectileManager already bound to a different scene.');
-        }
+        if (this.scene === scene && (!existingGroup || existingGroup === this.physicsGroup)) return;
+        if (this.scene) this.unbindScene(this.scene);
+
         this.scene = scene;
+        this.ownsPhysicsGroup = !existingGroup;
         this.physicsGroup = existingGroup ?? scene.physics.add.group();
+        scene.events.once('shutdown', () => this.unbindScene(scene));
+    }
+
+    /**
+     * Drop all projectiles tied to a scene before its physics world is discarded.
+     * The manager remains attached to its Game and can bind to a restarted scene.
+     */
+    unbindScene(scene: Phaser.Scene): void {
+        if (this.scene !== scene) return;
+
+        const physicsGroup = this.physicsGroup;
+        const ownsPhysicsGroup = this.ownsPhysicsGroup;
+        const projectiles = new Set([...this.active, ...this.pool]);
+        this.active.length = 0;
+        this.pool.length = 0;
+        this.scene = null;
+        this.physicsGroup = null;
+        this.ownsPhysicsGroup = false;
+
+        for (const proj of projectiles) {
+            if (!proj.isDestroyed && typeof proj.destroy === 'function') {
+                proj.destroy();
+            }
+        }
+
+        if (ownsPhysicsGroup && physicsGroup?.scene && typeof physicsGroup.destroy === 'function') {
+            physicsGroup.destroy(true);
+        }
     }
 
     /**
@@ -110,7 +139,7 @@ export class ProjectileManager {
         let cleaned = 0;
         for (let i = this.active.length - 1; i >= 0; i--) {
             const proj = this.active[i];
-            if (proj.removeIt) {
+            if (proj.isDestroyed || proj.removeIt) {
                 this.active.splice(i, 1);
                 this.returnToPool(proj);
                 cleaned++;
@@ -131,26 +160,22 @@ export class ProjectileManager {
     }
 
     /**
-     * Final shutdown: return all to pool, destroy group, clear pool.
-     * Called when the Game/scene is permanently destroyed.
+     * Destroy scene-bound projectiles and release manager-owned scene resources.
+     * The manager remains attached to its Game and may be rebound to another scene.
      */
     destroy(): void {
-        this.clear();
-
-        if (this.physicsGroup) {
-            this.physicsGroup.destroy(true);
-            this.physicsGroup = null;
-        }
-
-        for (const proj of this.pool) {
-            if (typeof proj.destroy === 'function') {
-                proj.destroy();
+        if (this.scene) {
+            this.unbindScene(this.scene);
+        } else {
+            const projectiles = new Set([...this.active, ...this.pool]);
+            this.active.length = 0;
+            this.pool.length = 0;
+            for (const proj of projectiles) {
+                if (!proj.isDestroyed && typeof proj.destroy === 'function') {
+                    proj.destroy();
+                }
             }
         }
-        this.pool.length = 0;
-
-        this.scene = null;
-        this.game.projectileManager = null;
     }
 
     // ------------------------------------------------------------------
@@ -158,18 +183,31 @@ export class ProjectileManager {
     // ------------------------------------------------------------------
 
     private async acquireAsync(config: ProjectileSpawnConfig): Promise<any> {
-        let proj: any;
-        let reused: boolean;
+        const scene = this.scene;
+        const physicsGroup = this.physicsGroup;
+        if (!scene || !physicsGroup) {
+            throw new Error('ProjectileManager must be bound to a scene before spawning projectiles.');
+        }
 
-        if (this.pool.length > 0) {
-            proj = this.pool.pop()!;
-            reused = true;
-        } else {
+        let proj: any;
+        let reused = false;
+
+        while (this.pool.length > 0 && !proj) {
+            const candidate = this.pool.pop();
+            if (!candidate.isDestroyed && (!candidate.scene || candidate.scene === scene)) {
+                proj = candidate;
+                reused = true;
+            } else if (!candidate.isDestroyed && typeof candidate.destroy === 'function') {
+                candidate.destroy();
+            }
+        }
+
+        if (!proj) {
             // Dynamic import — works in browser (async) and Node test environment.
             // Falls back to a minimal proxy only if the module truly cannot load.
             try {
                 const { PhysicsProjectile } = await import('../physics/PhysicsProjectile');
-                proj = PhysicsProjectile.createPooled(this.scene!);
+                proj = PhysicsProjectile.createPooled(scene);
             } catch (e) {
                 // Safe fallback for environments without a real scene: a minimal proxy
                 // that satisfies the contract. It has no body, so it is never added to
@@ -192,7 +230,13 @@ export class ProjectileManager {
                     reset: () => {}
                 };
             }
-            reused = false;
+
+            if (this.scene !== scene || this.physicsGroup !== physicsGroup) {
+                if (!proj.isDestroyed && typeof proj.destroy === 'function') {
+                    proj.destroy();
+                }
+                throw new Error('Projectile scene was shut down before the projectile could be created.');
+            }
         }
 
         // REACTIVATE PHASER BODY
@@ -221,8 +265,8 @@ export class ProjectileManager {
         // Add to physics group for collision broadphase FIRST.
         // The group's createCallbackHandler applies defaults (including velocityX=0, velocityY=0),
         // so we must set velocity AFTER adding, just like Weapon.fireArcadeProjectile does.
-        if (proj.body && this.physicsGroup && !this.physicsGroup.contains(proj)) {
-            this.physicsGroup.add(proj);
+        if (proj.body && !physicsGroup.contains(proj)) {
+            physicsGroup.add(proj);
         }
 
         // NOW set velocity and drag — after group add so defaults don't overwrite them
@@ -234,17 +278,23 @@ export class ProjectileManager {
         );
         proj.setDrag(config.drag ?? 10);
 
-        this.active.push(proj);
+        if (!this.active.includes(proj)) this.active.push(proj);
         return proj;
     }
 
     private returnToPool(proj: any): void {
-        if (!proj) return;
+        if (!proj || this.pool.includes(proj)) return;
+        if (proj.isDestroyed || (proj.scene && this.scene && proj.scene !== this.scene)) return;
+        if (!this.scene || !this.physicsGroup) {
+            if (typeof proj.destroy === 'function') proj.destroy();
+            return;
+        }
 
-        if (this.physicsGroup && this.physicsGroup.contains(proj)) {
+        if (this.physicsGroup.scene && this.physicsGroup.contains(proj)) {
             this.physicsGroup.remove(proj, false);
         }
 
+        if (proj.isDestroyed) return;
         proj.reset();
         this.pool.push(proj);
     }
