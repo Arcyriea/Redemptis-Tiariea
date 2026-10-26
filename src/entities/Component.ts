@@ -1,6 +1,7 @@
 import { Game } from '../core/Game';
 import { Ship } from './Ship';
 import { Weapon } from '../weapons/Weapon';
+import { ManagedWeapon } from '../weapons/ManagedWeapon';
 import { Ability } from '../abilities/Ability';
 
 /**
@@ -64,7 +65,10 @@ export class Component {
 
             // Logic instantiation
             if (this.type === "Weapon") {
-                this.effect = new Weapon();
+                // Prefer ManagedWeapon if projectile management is available
+                this.effect = this.game.projectileManager
+                    ? new ManagedWeapon(this.game.projectileManager)
+                    : new Weapon();
                 this.effect.init(name, this);
                 this.cooldown = this.effect.cooldown;
                 this.energyCost = this.effect.energyCost;

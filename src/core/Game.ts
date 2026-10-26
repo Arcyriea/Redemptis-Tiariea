@@ -8,6 +8,7 @@ import { SoundManager } from '../audio/SoundManager';
 import { EntityManager } from '../managers/EntityManager';
 import { ShipManager } from '../managers/ShipManager';
 import { FactionId, FactionManager } from '../managers/FactionManager';
+import { ProjectileManager } from '../managers/ProjectileManager';
 
 export class Game {
     // Core game state
@@ -57,6 +58,7 @@ export class Game {
     public entityManager: EntityManager | null = null;
     public shipManager: ShipManager | null = null;
     public factionManager!: FactionManager;
+    public projectileManager: ProjectileManager | null = null;
 
     // Input state
     public keys: any = {
@@ -81,9 +83,19 @@ export class Game {
         this.uiManager = new UIManager();
         this.soundManager = new SoundManager();
         this.shipManager = new ShipManager(this);
+        this.projectileManager = new ProjectileManager(this);
 
         // Load game data (ship/part/component definitions)
         this.loadGameData();
+    }
+
+    /**
+     * Bind the ProjectileManager to a Phaser scene once the physics world exists.
+     * Called from GameScene.create() after physics setup.
+     * Optionally passes an existing projectiles group so the manager reuses it.
+     */
+    bindScene(scene: Phaser.Scene, existingGroup?: any): void {
+        this.projectileManager?.bindScene(scene, existingGroup);
     }
 
     loadGameData() {
@@ -160,6 +172,10 @@ export class Game {
         if (this.uiManager) this.uiManager.update();
         if (this.miniMap) this.miniMap.update();
         if (this.soundManager) this.soundManager.update();
+
+        // Update projectile lifecycle (aging + expiration)
+        this.projectileManager?.update(delta);
+        this.projectileManager?.cleanup();
 
         // Process spawn queue
         this.processSpawnQueue();
@@ -311,6 +327,9 @@ export class Game {
 
         // Dispose all pooled objects
         if (this.objectPool) this.objectPool.clearAll();
+
+        // Return active projectiles to pool (preserves pool across sectors)
+        this.projectileManager?.clear();
     }
 
     loadSector(sectorData: any) {

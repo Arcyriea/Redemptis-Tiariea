@@ -253,6 +253,10 @@ class GameScene extends Phaser.Scene {
 
         this.manageCamera();
 
+        // Bind ProjectileManager to this scene's physics world, reusing the
+        // existing projectiles group so camera/collision code keeps working.
+        this.engine.bindScene(this, this.projectiles);
+
         // SHUTDOWN cleanup for player Ship (Step 5)
         this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
             this.cleanupPlayerShip();
@@ -282,6 +286,9 @@ class GameScene extends Phaser.Scene {
         if (this.projectiles) {
             this.projectiles.clear(true, true); // destroy children, remove from physics
         }
+
+        // 6. Return active projectiles to pool (preserves pool across scene restarts)
+        this.engine.projectileManager?.clear();
     }
 
     update(time, delta) {

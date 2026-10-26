@@ -10,7 +10,10 @@ import {
     FactionManager,
     YUTIARINALIA,
     RESERVED_FACTIONS,
-    createFactionId
+    createDiplomaticGroupId,
+    createFactionId,
+    factionPrincipal,
+    groupPrincipal
 } from '../src/managers/FactionManager';
 import { ShipManager } from '../src/managers/ShipManager';
 
@@ -120,6 +123,388 @@ test('derives exact inclusive relationship thresholds', () => {
     assert.equal(manager.getFactionRelationship(YUTIARINALIA, faction), 'Neutral');
     manager.setRelationshipScore(YUTIARINALIA, faction, 50);
     assert.equal(manager.getFactionRelationship(YUTIARINALIA, faction), 'Ally');
+});
+
+test('groups preserve faction identity and internal relationships remain independent', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    manager.registerGroup(tiarieans);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setFactionGroup(AISTIARIA, tiarieans);
+    manager.setFactionGroup(RESERVED_FACTIONS[0], tiarieans);
+    manager.setRelationshipScore(YUTIARINALIA, RESERVED_FACTIONS[0], 25);
+
+    assert.equal(manager.getFactionGroup(YUTIARINALIA), tiarieans);
+    assert.equal(manager.getFaction(YUTIARINALIA), undefined);
+    assert.equal(manager.getRelationshipScore(YUTIARINALIA, AISTIARIA), -100);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, AISTIARIA).relationship, 'Enemy');
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship, 'Neutral');
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).source, 'direct');
+});
+
+test('diplomatic scores persist across faction group assignment, changes, and ungrouping', () => {
+    const manager = createFactionManager();
+    const firstGroup = createDiplomaticGroupId('FirstGroup');
+    const secondGroup = createDiplomaticGroupId('SecondGroup');
+    const externalGroup = createDiplomaticGroupId('ExternalGroup');
+    const externalFaction = RESERVED_FACTIONS[0];
+    manager.registerGroup(firstGroup);
+    manager.registerGroup(secondGroup);
+    manager.registerGroup(externalGroup);
+    manager.setFactionGroup(externalFaction, externalGroup);
+
+    manager.setDiplomaticRelationshipScore(factionPrincipal(YUTIARINALIA), groupPrincipal(externalGroup), 50);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(firstGroup), groupPrincipal(externalGroup), -50);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(secondGroup), groupPrincipal(externalGroup), 50);
+    assert.equal(
+        manager.getDiplomaticRelationshipScore(groupPrincipal(externalGroup), factionPrincipal(YUTIARINALIA)),
+        50
+    );
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, externalFaction).relationship, 'Ally');
+
+    manager.setFactionGroup(YUTIARINALIA, firstGroup);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, externalFaction).relationship, 'Enemy');
+    assert.equal(
+        manager.getDiplomaticRelationshipScore(factionPrincipal(YUTIARINALIA), groupPrincipal(externalGroup)),
+        50
+    );
+    assert.equal(
+        manager.getDiplomaticRelationshipScore(groupPrincipal(externalGroup), groupPrincipal(firstGroup)),
+        -50
+    );
+
+    manager.setFactionGroup(YUTIARINALIA, secondGroup);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, externalFaction).relationship, 'Ally');
+    assert.equal(
+        manager.getDiplomaticRelationshipScore(groupPrincipal(secondGroup), groupPrincipal(externalGroup)),
+        50
+    );
+
+    manager.setDiplomaticRelationshipScore(factionPrincipal(YUTIARINALIA), groupPrincipal(externalGroup), -100);
+    assert.equal(
+        manager.getDiplomaticRelationshipScore(groupPrincipal(externalGroup), factionPrincipal(YUTIARINALIA)),
+        -100
+    );
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, externalFaction).relationship, 'Ally');
+
+    manager.setFactionGroup(YUTIARINALIA, null);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, externalFaction).relationship, 'Enemy');
+    assert.equal(
+        manager.getDiplomaticRelationshipScore(groupPrincipal(externalGroup), factionPrincipal(YUTIARINALIA)),
+        -100
+    );
+});
+
+test('an internal war does not change an outside faction relationship or trigger intervention', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const independent = createFactionId('Independent');
+    manager.registerGroup(tiarieans);
+    manager.registerFaction(independent);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setFactionGroup(RESERVED_FACTIONS[0], tiarieans);
+    manager.setRelationshipScore(YUTIARINALIA, RESERVED_FACTIONS[0], -100);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(tiarieans), factionPrincipal(independent), 50);
+
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship, 'Enemy');
+    assert.equal(manager.resolveRelationship(independent, YUTIARINALIA).relationship, 'Ally');
+    assert.equal(manager.resolveRelationship(independent, RESERVED_FACTIONS[0]).relationship, 'Ally');
+    assert.equal(
+        manager.resolveRelationship(independent, YUTIARINALIA).relationship,
+        manager.resolveRelationship(YUTIARINALIA, independent).relationship
+    );
+});
+
+test('external group diplomacy overrides direct member scores and defaults to neutral', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const outsider = createFactionId('Independent');
+    manager.registerGroup(tiarieans);
+    manager.registerFaction(outsider);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setFactionGroup(AISTIARIA, tiarieans);
+    manager.setFactionGroup(RESERVED_FACTIONS[0], tiarieans);
+
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, outsider).relationship, 'Neutral');
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, outsider).source, 'default-neutral');
+
+    manager.setRelationshipScore(YUTIARINALIA, outsider, 100);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(tiarieans), factionPrincipal(outsider), -100);
+    for (const member of [YUTIARINALIA, AISTIARIA, RESERVED_FACTIONS[0]]) {
+        assert.equal(manager.resolveRelationship(member, outsider).relationship, 'Enemy');
+        assert.equal(manager.resolveRelationship(member, outsider).source, 'group-diplomacy');
+    }
+});
+
+test('agreement specificity overrides group defaults and revocation restores the active baseline', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const outsiders = createDiplomaticGroupId('Outsiders');
+    const independent = createFactionId('Independent');
+    manager.registerGroup(tiarieans);
+    manager.registerGroup(outsiders);
+    manager.registerFaction(independent);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setFactionGroup(AISTIARIA, tiarieans);
+    manager.setFactionGroup(RESERVED_FACTIONS[0], outsiders);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(tiarieans), groupPrincipal(outsiders), -100);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(tiarieans), factionPrincipal(independent), 0);
+
+    manager.registerAgreement({
+        id: 'tiariean-outsider-alliance',
+        type: 'Alliance',
+        participants: [groupPrincipal(tiarieans), factionPrincipal(independent)]
+    });
+    manager.registerAgreement({
+        id: 'yutiarinalia-verdania-ceasefire',
+        type: 'Ceasefire',
+        participants: [factionPrincipal(YUTIARINALIA), factionPrincipal(RESERVED_FACTIONS[0])]
+    });
+
+    const memberCeasefire = manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]);
+    assert.equal(memberCeasefire.relationship, 'Neutral');
+    assert.equal(memberCeasefire.baselineRelationship, 'Enemy');
+    assert.deepEqual(memberCeasefire.agreements, [
+        { id: 'yutiarinalia-verdania-ceasefire', type: 'Ceasefire' }
+    ]);
+    assert.equal(manager.isFactionAlly(YUTIARINALIA, RESERVED_FACTIONS[0]), false);
+    assert.equal(manager.isFactionEnemy(YUTIARINALIA, RESERVED_FACTIONS[0]), false);
+    assert.equal(manager.resolveRelationship(AISTIARIA, RESERVED_FACTIONS[0]).relationship, 'Enemy');
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, independent).relationship, 'Ally');
+
+    assert.equal(manager.revokeAgreement('yutiarinalia-verdania-ceasefire'), true);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship, 'Enemy');
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, independent).relationship, 'Ally');
+    assert.equal(manager.revokeAgreement('yutiarinalia-verdania-ceasefire'), false);
+});
+
+test('alliance, ceasefire, and treaties have explicit relationship-only outcomes', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const outsider = createFactionId('Independent');
+    manager.registerGroup(tiarieans);
+    manager.registerFaction(outsider);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(tiarieans), factionPrincipal(outsider), -100);
+
+    manager.registerAgreement({
+        id: 'ceasefire',
+        type: 'Ceasefire',
+        participants: [groupPrincipal(tiarieans), factionPrincipal(outsider)]
+    });
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, outsider).relationship, 'Neutral');
+    assert.equal(manager.isFactionAlly(YUTIARINALIA, outsider), false);
+    assert.equal(manager.revokeAgreement('ceasefire'), true);
+
+    manager.registerAgreement({
+        id: 'neutral-treaty',
+        type: 'Treaty',
+        relationship: 'Neutral',
+        participants: [groupPrincipal(tiarieans), factionPrincipal(outsider)]
+    });
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, outsider).relationship, 'Neutral');
+    assert.equal(manager.revokeAgreement('neutral-treaty'), true);
+
+    manager.registerAgreement({
+        id: 'alliance',
+        type: 'Alliance',
+        participants: [groupPrincipal(tiarieans), factionPrincipal(outsider)]
+    });
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, outsider).relationship, 'Ally');
+});
+
+test('more-specific agreements override broader agreements independent of insertion order', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const outsiders = createDiplomaticGroupId('Outsiders');
+    manager.registerGroup(tiarieans);
+    manager.registerGroup(outsiders);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setFactionGroup(AISTIARIA, tiarieans);
+    manager.setFactionGroup(RESERVED_FACTIONS[0], outsiders);
+
+    manager.registerAgreement({
+        id: 'specific-ceasefire',
+        type: 'Ceasefire',
+        participants: [factionPrincipal(YUTIARINALIA), factionPrincipal(RESERVED_FACTIONS[0])]
+    });
+    manager.registerAgreement({
+        id: 'broad-alliance',
+        type: 'Alliance',
+        participants: [groupPrincipal(tiarieans), groupPrincipal(outsiders)]
+    });
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship, 'Neutral');
+    assert.equal(manager.resolveRelationship(AISTIARIA, RESERVED_FACTIONS[0]).relationship, 'Ally');
+
+    assert.equal(manager.revokeAgreement('specific-ceasefire'), true);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship, 'Ally');
+    assert.equal(manager.revokeAgreement('broad-alliance'), true);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship, 'Neutral');
+
+    const reverseOrderManager = createFactionManager();
+    reverseOrderManager.registerGroup(tiarieans);
+    reverseOrderManager.registerGroup(outsiders);
+    reverseOrderManager.setFactionGroup(YUTIARINALIA, tiarieans);
+    reverseOrderManager.setFactionGroup(AISTIARIA, tiarieans);
+    reverseOrderManager.setFactionGroup(RESERVED_FACTIONS[0], outsiders);
+    reverseOrderManager.registerAgreement({
+        id: 'reverse-broad-alliance',
+        type: 'Alliance',
+        participants: [groupPrincipal(tiarieans), groupPrincipal(outsiders)]
+    });
+    reverseOrderManager.registerAgreement({
+        id: 'reverse-specific-ceasefire',
+        type: 'Ceasefire',
+        participants: [factionPrincipal(YUTIARINALIA), factionPrincipal(RESERVED_FACTIONS[0])]
+    });
+    assert.equal(
+        reverseOrderManager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship,
+        'Neutral'
+    );
+});
+
+test('group-to-faction agreements outrank group-to-group defaults without spreading to other factions', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const outsiders = createDiplomaticGroupId('Outsiders');
+    const namedOutsider = RESERVED_FACTIONS[0];
+    manager.registerGroup(tiarieans);
+    manager.registerGroup(outsiders);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setFactionGroup(AISTIARIA, tiarieans);
+    manager.setFactionGroup(namedOutsider, outsiders);
+    manager.setFactionGroup(RESERVED_FACTIONS[1], outsiders);
+
+    manager.registerAgreement({
+        id: 'group-alliance',
+        type: 'Alliance',
+        participants: [groupPrincipal(tiarieans), groupPrincipal(outsiders)]
+    });
+    manager.registerAgreement({
+        id: 'named-member-ceasefire',
+        type: 'Ceasefire',
+        participants: [groupPrincipal(tiarieans), factionPrincipal(namedOutsider)]
+    });
+
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, namedOutsider).relationship, 'Neutral');
+    assert.equal(manager.resolveRelationship(AISTIARIA, namedOutsider).relationship, 'Neutral');
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[1]).relationship, 'Ally');
+});
+
+test('rejects agreements between a faction and its current group', () => {
+    const manager = createFactionManager();
+    const home = createDiplomaticGroupId('Home');
+    const external = createDiplomaticGroupId('External');
+    const internalMember = RESERVED_FACTIONS[0];
+    const externalMember = RESERVED_FACTIONS[1];
+    manager.registerGroup(home);
+    manager.registerGroup(external);
+    manager.setFactionGroup(YUTIARINALIA, home);
+    manager.setFactionGroup(internalMember, home);
+    manager.setFactionGroup(externalMember, external);
+
+    assert.throws(() => manager.registerAgreement({
+        id: 'own-group-agreement',
+        type: 'Alliance',
+        participants: [factionPrincipal(YUTIARINALIA), groupPrincipal(home)]
+    }), /current political group/);
+
+    manager.registerAgreement({
+        id: 'other-group-agreement',
+        type: 'Alliance',
+        participants: [factionPrincipal(YUTIARINALIA), groupPrincipal(external)]
+    });
+    manager.registerAgreement({
+        id: 'internal-faction-agreement',
+        type: 'Ceasefire',
+        participants: [factionPrincipal(YUTIARINALIA), factionPrincipal(internalMember)]
+    });
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, externalMember).relationship, 'Ally');
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, internalMember).relationship, 'Neutral');
+
+    const membershipChangeManager = createFactionManager();
+    membershipChangeManager.registerGroup(home);
+    membershipChangeManager.registerAgreement({
+        id: 'agreement-becomes-own-group',
+        type: 'Alliance',
+        participants: [groupPrincipal(home), factionPrincipal(YUTIARINALIA)]
+    });
+    assert.throws(() => membershipChangeManager.setFactionGroup(YUTIARINALIA, home), /current political group/);
+    assert.equal(membershipChangeManager.getFactionGroup(YUTIARINALIA), undefined);
+});
+
+test('rejects conflicting equal-specificity agreements and membership that would activate ambiguity', () => {
+    const manager = createFactionManager();
+    const north = createDiplomaticGroupId('North');
+    const south = createDiplomaticGroupId('South');
+    manager.registerGroup(north);
+    manager.registerGroup(south);
+    manager.setFactionGroup(YUTIARINALIA, north);
+    manager.setFactionGroup(RESERVED_FACTIONS[0], south);
+
+    manager.registerAgreement({
+        id: 'faction-to-south',
+        type: 'Alliance',
+        participants: [factionPrincipal(YUTIARINALIA), groupPrincipal(south)]
+    });
+    assert.throws(() => manager.registerAgreement({
+        id: 'north-to-faction',
+        type: 'Ceasefire',
+        participants: [groupPrincipal(north), factionPrincipal(RESERVED_FACTIONS[0])]
+    }), /Conflicting diplomatic agreements/);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, RESERVED_FACTIONS[0]).relationship, 'Ally');
+
+    manager.registerFaction(AISTIARIA);
+    manager.registerAgreement({
+        id: 'north-to-aistiaria',
+        type: 'Ceasefire',
+        participants: [groupPrincipal(north), factionPrincipal(AISTIARIA)]
+    });
+    assert.throws(() => manager.setFactionGroup(AISTIARIA, south), /Conflicting diplomatic agreements/);
+    assert.equal(manager.getFactionGroup(AISTIARIA), undefined);
+});
+
+test('group membership and agreement validation reject unregistered principals', () => {
+    const manager = createFactionManager();
+    const missingGroup = createDiplomaticGroupId('MissingGroup');
+    const missingFaction = createFactionId('MissingFaction');
+
+    assert.throws(() => manager.setFactionGroup(YUTIARINALIA, missingGroup), /not registered/);
+    assert.throws(() => manager.registerAgreement({
+        id: 'invalid',
+        type: 'Alliance',
+        participants: [factionPrincipal(missingFaction), groupPrincipal(missingGroup)]
+    }), /not registered/);
+    assert.throws(() => manager.setDiplomaticRelationshipScore(
+        factionPrincipal(YUTIARINALIA),
+        factionPrincipal(AISTIARIA),
+        100
+    ), /at least one political group/);
+});
+
+test('group diplomacy and agreements persist when entity memberships are cleared', () => {
+    const manager = createFactionManager();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const outsider = createFactionId('Independent');
+    const entityA = entity();
+    const entityB = entity();
+    manager.registerGroup(tiarieans);
+    manager.registerFaction(outsider);
+    manager.setFactionGroup(YUTIARINALIA, tiarieans);
+    manager.setFaction(entityA, YUTIARINALIA);
+    manager.setFaction(entityB, outsider);
+    manager.setDiplomaticRelationshipScore(groupPrincipal(tiarieans), factionPrincipal(outsider), -100);
+    manager.registerAgreement({
+        id: 'persistent-ceasefire',
+        type: 'Ceasefire',
+        participants: [factionPrincipal(YUTIARINALIA), factionPrincipal(outsider)]
+    });
+
+    manager.clear();
+
+    assert.equal(manager.getFaction(entityA), undefined);
+    assert.equal(manager.getFactionGroup(YUTIARINALIA), tiarieans);
+    assert.equal(manager.resolveRelationship(YUTIARINALIA, outsider).relationship, 'Neutral');
 });
 
 test('validates score values, faction registration, and self-relationships', () => {
@@ -367,6 +752,49 @@ test('ability targeting and destruction rewards use faction relationships', () =
     } finally {
         Math.random = originalRandom;
     }
+});
+
+test('combat targeting and rewards consume group diplomacy and ceasefires', () => {
+    const game = createGame();
+    const tiarieans = createDiplomaticGroupId('Tiarieans');
+    const outsider = RESERVED_FACTIONS[0];
+    game.factionManager.registerGroup(tiarieans);
+    game.factionManager.setFactionGroup(YUTIARINALIA, tiarieans);
+    game.factionManager.setDiplomaticRelationshipScore(
+        groupPrincipal(tiarieans),
+        factionPrincipal(outsider),
+        -100
+    );
+    const playerShip = game.spawnShip('ship', YUTIARINALIA, 0, 0);
+    const hostileShip = game.spawnShip('ship', outsider, 0, 0);
+    const ability = new Ability();
+    ability.ship = playerShip;
+    ability.canTargetEnemy = true;
+
+    assert.equal(ability.activate(hostileShip), true);
+
+    game.credits = 0;
+    game.uiManager = { updateCredits: () => undefined } as Game['uiManager'];
+    game.spawnPowerUp = () => null;
+    const originalRandom = Math.random;
+    Math.random = () => 1;
+    try {
+        hostileShip.value = 10000;
+        hostileShip.explode();
+        assert.equal(game.credits, 10);
+    } finally {
+        Math.random = originalRandom;
+    }
+
+    game.factionManager.registerAgreement({
+        id: 'combat-ceasefire',
+        type: 'Ceasefire',
+        participants: [factionPrincipal(YUTIARINALIA), factionPrincipal(outsider)]
+    });
+    const ceasefireAbility = new Ability();
+    ceasefireAbility.ship = playerShip;
+    ceasefireAbility.canTargetEnemy = true;
+    assert.equal(ceasefireAbility.activate(hostileShip), false);
 });
 
 test('spawn failure rolls back the managed queue, entity registration, and faction membership', () => {
