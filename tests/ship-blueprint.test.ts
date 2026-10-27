@@ -61,6 +61,7 @@ test('Ship.init builds the player runtime ship and preserves its effective stats
             maxHull: ship.maxHull,
             maxShell: ship.maxShell,
             maxEnergy: ship.maxEnergy,
+            regenEnergy: ship.regenEnergy,
             maxSpeed: ship.maxSpeed,
             acceleration: ship.acceleration,
             weight: ship.weight,
@@ -76,6 +77,7 @@ test('Ship.init builds the player runtime ship and preserves its effective stats
             maxHull: 25,
             maxShell: 50,
             maxEnergy: 100,
+            regenEnergy: 20,
             maxSpeed: 5,
             acceleration: 0.5,
             weight: 10,
@@ -104,6 +106,24 @@ test('Ship.init builds the player runtime ship and preserves its effective stats
     assert.equal(ship.compWeapon[0].effect?.projectileSpeed, 600);
     assert.equal(ship.compWeapon[0].cooldown, 0.15);
     assert.equal(ship.compWeapon[0].energyCost, 5);
+});
+
+test('blueprint regeneration defaults to 20 and preserves explicit overrides', () => {
+    const defaultGame = createConfiguredGame();
+    const defaultBlueprint = defaultGame.shipManager!.getBlueprint('ship.player')!;
+    delete defaultBlueprint.shipDefinition!.stats.regenEnergy;
+    const defaultShip = defaultGame.objectPool!.getShipObject('player');
+
+    assert.ok(defaultShip);
+    assert.equal(defaultShip.regenEnergy, 20);
+
+    const overrideGame = createConfiguredGame();
+    const overrideBlueprint = overrideGame.shipManager!.getBlueprint('ship.player')!;
+    overrideBlueprint.shipDefinition!.stats.regenEnergy = 7;
+    const overrideShip = overrideGame.objectPool!.getShipObject('player');
+
+    assert.ok(overrideShip);
+    assert.equal(overrideShip.regenEnergy, 7);
 });
 
 test('legacy ship definitions remain available through the existing catalogue', () => {

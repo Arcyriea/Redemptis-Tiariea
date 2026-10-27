@@ -28,7 +28,7 @@ export class Ship {
     public regenShell: number = 0;
     public maxEnergy: number = 100;
     public currentEnergy: number = 100;
-    public regenEnergy: number = 0;
+    public regenEnergy: number = 20;
     public maxSpeed: number = 5.0;
     public acceleration: number = 0.5;
     public weight: number = 10;
@@ -80,6 +80,7 @@ export class Ship {
 
     init(type: string) {
         this.type = type;
+        this.regenEnergy = 20;
         this.removeIt = false;
         this.exploding = false;
 
@@ -177,7 +178,7 @@ export class Ship {
         this.maxShell = blueprint.stats.maxShell;
         this.regenShell = blueprint.stats.regenShell;
         this.maxEnergy = blueprint.stats.maxEnergy;
-        this.regenEnergy = blueprint.stats.regenEnergy;
+        this.regenEnergy = blueprint.stats.regenEnergy ?? 20;
         this.maxSpeed = blueprint.stats.maxSpeed;
         this.acceleration = blueprint.stats.acceleration;
         this.weight = blueprint.stats.weight;
@@ -205,6 +206,13 @@ export class Ship {
 
         // Check bounds / collisions
         this.checkCollision();
+    }
+
+    regenerateEnergy(delta: number): void {
+        this.currentEnergy = Math.min(
+            this.maxEnergy,
+            this.currentEnergy + this.regenEnergy * delta / 1000
+        );
     }
 
     moveShip() {

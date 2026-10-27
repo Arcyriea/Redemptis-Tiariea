@@ -138,6 +138,7 @@ test('pooled reuse restores scalar state reset by Ship.resetIt', () => {
     ship.currentHull = 1;
     ship.currentShell = 1;
     ship.currentEnergy = 1;
+    ship.regenEnergy = 75;
     ship.removeIt = true;
     game.updateQueues();
 
@@ -149,18 +150,71 @@ test('pooled reuse restores scalar state reset by Ship.resetIt', () => {
             immobile: reusedShip.immobile,
             currentHull: reusedShip.currentHull,
             currentShell: reusedShip.currentShell,
-            currentEnergy: reusedShip.currentEnergy
+            currentEnergy: reusedShip.currentEnergy,
+            regenEnergy: reusedShip.regenEnergy
         },
         {
             moving: false,
             immobile: false,
             currentHull: reusedShip.maxHull,
             currentShell: reusedShip.maxShell,
-            currentEnergy: reusedShip.maxEnergy
+            currentEnergy: reusedShip.maxEnergy,
+            regenEnergy: 20
         }
     );
     // parts/components are built from shipData by Ship.init(); no definitions
     // are available here to verify their expected contents on pooled reuse.
+});
+
+test('energy regeneration uses elapsed milliseconds and clamps at maximum energy', () => {
+    createGame();
+    const ship = new Ship();
+    ship.currentEnergy = 10;
+    ship.maxEnergy = 100;
+    ship.regenEnergy = 20;
+
+    ship.regenerateEnergy(2500);
+    assert.equal(ship.currentEnergy, 60);
+
+    ship.currentEnergy = 95;
+    ship.regenerateEnergy(1000);
+    assert.equal(ship.currentEnergy, 100);
+});
+
+test('Game regenerates registered player and managed ships exactly once per frame', () => {
+    const game = createGame();
+    game.componentData = {};
+    game.loadGameData();
+    const player = game.objectPool!.getShipObject('player');
+    const ordinary = game.shipManager!.createShip('undefined-type', YUTIARINALIA, 0, 0, {
+        randomOffset: 0
+    });
+
+    assert.ok(player);
+    assert.ok(ordinary);
+    game.entityManager!.register(player, 'ship');
+    player.currentEnergy = 0;
+    ordinary.currentEnergy = 0;
+    let playerRegenerationCalls = 0;
+    let ordinaryRegenerationCalls = 0;
+    const regeneratePlayer = player.regenerateEnergy.bind(player);
+    const regenerateOrdinary = ordinary.regenerateEnergy.bind(ordinary);
+    player.regenerateEnergy = (delta: number) => {
+        playerRegenerationCalls++;
+        regeneratePlayer(delta);
+    };
+    ordinary.regenerateEnergy = (delta: number) => {
+        ordinaryRegenerationCalls++;
+        regenerateOrdinary(delta);
+    };
+
+    game.update(0, 1500);
+
+    assert.equal(player.currentEnergy, 30);
+    assert.equal(ordinary.currentEnergy, 30);
+    assert.equal(playerRegenerationCalls, 1);
+    assert.equal(ordinaryRegenerationCalls, 1);
+    assert.equal(game.shipQueue.includes(player), false);
 });
 
 test('respawn disposal removes the ship from the managed queue before pooled reuse', () => {

@@ -5,7 +5,7 @@ export interface ShipBlueprintStats {
     maxShell: number;
     regenShell: number;
     maxEnergy: number;
-    regenEnergy: number;
+    regenEnergy?: number;
     maxSpeed: number;
     acceleration: number;
     weight: number;

@@ -121,7 +121,7 @@ export class Game {
                 maxShell: 50,
                 regenShell: 0,
                 maxEnergy: 100,
-                regenEnergy: 0,
+                regenEnergy: 20,
                 maxSpeed: 5,
                 acceleration: 0.5,
                 weight: 10,
@@ -166,6 +166,7 @@ export class Game {
 
         // Update systems
         this.updateQueues();
+        this.regenerateShipEnergy(delta);
         this.updateEffects();
         this.updateTasks();
         if (this.camera) this.camera.update();
@@ -193,6 +194,14 @@ export class Game {
                 ship.update();
             }
         }
+    }
+
+    private regenerateShipEnergy(delta: number): void {
+        this.entityManager?.forEach((entity) => {
+            if (entity instanceof Ship && entity.active && !entity.removeIt) {
+                entity.regenerateEnergy(delta);
+            }
+        });
     }
 
     updateEffects() {
