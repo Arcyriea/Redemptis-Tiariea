@@ -7,37 +7,36 @@ I'd organize the current proposal into those groups while keeping the specialize
 These managers own or coordinate the lifecycle of different kinds of entities.
 
 ## EntityManager
-
 Common entity registration, stable IDs, lookup and lifecycle cleanup
 
-ShipManager
-
+### ShipManager
 Ordinary ships, blueprints and ship components
 
-FighterManager
-
+### FighterManager
 Fighter entities, flight and specialized behavior
 
-TankManager
+### CorvetteManager
+Similar to fighters but bigger and mostly has turreted weapon mounts. Not large enough to be classified as actual capital ships, don't have their own jump drives.
 
-Ground vehicles, movement and crushing interactions
+### TankManager
+Ground vehicles, movement and crushing interactions.
 
-InfantryManager
+### AssaultcraftManager
+A middle class of units between Tanks and Infantries, they cannot crush or ran over infantry men, only knock them away the faster they moves as they collides, they always speed similar to Corvettes and Fighters but on the ground.
 
+### InfantryManager
 Infantry entities and ground-unit behavior
 
-StationManager
-
+### StationManager
 Space stations, platforms and station operations
 
-AsteroidManager
-
+### AsteroidManager
 Stray asteroids and mineable asteroid entities
 
 A few boundaries are important:
 
-- `FighterManager` is distinct from `ShipManager` because fighters fly above ordinary ships and have different physical collision rules.
-- `TankManager` and `InfantryManager` handle different unit behaviors, including tanks colliding with one another and potentially crushing infantry.
+- `FighterManager` and `CorvetteManager` is distinct from `ShipManager` because fighters and corvettes fly above ordinary ships and have different physical collision rules.
+- `TankManager`, `AssaultcraftManager` and `InfantryManager` handle different unit behaviors, including tanks colliding with one another and potentially crushing infantry.
 - `StationManager` handles station-specific behavior, such as docking and hangars.
 - A station can host fighters or tanks without taking over their entity lifecycle.
 
@@ -45,24 +44,19 @@ A few boundaries are important:
 
 # 2. Combat, squads and command
 
-WeaponManager
-
+### WeaponManager
 Weapon definitions, mounts, turret behavior, targeting and firing requests.
 
-ProjectileManager
-
+### ProjectileManager
 Projectile spawning, movement, source attribution, collision and hit resolution.
 
-FleetManager
-
+### FleetManager
 Fleet membership, orders and coordination of autonomous ships.
 
-FighterSquadManager
+### SquadManager
+Fighter, Corvettes, Infantry, Assaultcrafts squad membership, formations, interception, escort and regrouping.
 
-Fighter squad membership, formations, interception, escort and regrouping.
-
-FactionManager
-
+### FactionManager
 Faction identities, ownership and friendly, neutral or hostile relationships.
 
 These systems cooperate rather than owning one another's responsibilities.
@@ -83,16 +77,13 @@ These rules should be coordinated through collision and combat systems rather th
 
 These managers represent increasingly large areas of the game world.
 
-SectorManager
-
+### SectorManager
 Local hexagonal sectors around a planet, including movement between adjacent hexes and the limits of its gravity-supported sector space.
 
-SolarSystemManager
-
+### SolarSystemManager
 Star systems, planets, orbital locations and interplanetary navigation.
 
-GalacticSectorManager
-
+### GalacticSectorManager
 Galaxy-scale sectors, star-system locations and interstellar navigation.
 
 The arrows represent the scale of navigation, not necessarily class inheritance or direct ownership.
@@ -133,11 +124,11 @@ You may also eventually want a `DamageSystem` if damage calculations become comp
 
 Entity management
 
-`EntityManager`, `ShipManager`, `FighterManager`, `TankManager`, `InfantryManager`, `StationManager`, `AsteroidManager`, potentially `PlanetManager`
+`EntityManager`, `ShipManager`, `FighterManager`, `CorvetteManager`, `TankManager`, `AssaultcraftManager`, `InfantryManager`, `StationManager`, `AsteroidManager`, potentially `PlanetManager`
 
 Combat and coordination
 
-`WeaponManager`, `ProjectileManager`, `FleetManager`, `FighterSquadManager`, `FactionManager`, collision and interaction system
+`WeaponManager`, `ProjectileManager`, `FleetManager`, `SquadManager`, `FactionManager`, collision and interaction system
 
 World and navigation
 
