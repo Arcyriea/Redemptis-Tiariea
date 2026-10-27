@@ -99,7 +99,7 @@ export class Ability {
         }
     }
 
-    activate(param1: Ship = null): boolean {
+    activate(param1: Ship | null = null): boolean {
         if (!this.ready) return false;
 
         // Determine targets

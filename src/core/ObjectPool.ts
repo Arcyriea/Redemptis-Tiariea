@@ -13,13 +13,6 @@ export class ObjectPool {
     private powerUpPool: Map<string, PowerUp[]> = new Map();
     private resourcePool: Map<string, Resource[]> = new Map();
 
-    // Temp arrays for getting objects
-    private tempShips: Ship[] = [];
-    private tempComponents: Component[] = [];
-    private tempEffects: Effect[] = [];
-    private tempPowerUps: PowerUp[] = [];
-    private tempResources: Resource[] = [];
-
     constructor() {
         this.initPools();
     }

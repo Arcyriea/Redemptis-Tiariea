@@ -71,24 +71,18 @@ export class Weapon {
         return true;
     }
 
-    fireBeam(ship: any, target: any) {
+    fireBeam(_ship: any, _target: any) {
         // Implement instant hit beam weapon
-        if (target && typeof target.takeDamage === "function") {
-            target.takeDamage(this.damage, "energy");
+        if (_target && typeof _target.takeDamage === "function") {
+            _target.takeDamage(this.damage, "energy");
         }
     }
 
-    fireProjectile(ship: any, part: any, target: any) {
-        // Calculate spawn position based on part offset and ship rotation
-        const rad = ship.rotation * (Math.PI / 180);
-        const spawnX = ship.x + Math.cos(rad) * part.x - Math.sin(rad) * part.y;
-        const spawnY = ship.y + Math.sin(rad) * part.x + Math.cos(rad) * part.y;
-
-        // Add project to game queue or spawn bullet
-        // In a full implementation, create a Projectile object in Phaser physics or custom pool
+    fireProjectile(_ship: any, _part: any, _target: any) {
+        // Projectile spawning is handled by the scene-specific fire paths.
     }
 
-    async fireArcadeProjectile(ship: any, part: any, target: any): Promise<boolean> {
+    async fireArcadeProjectile(ship: any, part: any, _target: any): Promise<boolean> {
         // Use direct Phaser Scene reference on ship (set by GameScene during player creation)
         const scene = ship.phaserScene;
         if (!scene) return false;

@@ -257,8 +257,8 @@ export class Game {
         faction: FactionId,
         x: number,
         y: number,
-        waypoints: any[] = null
-    ): Ship {
+        waypoints: any[] | null = null
+    ): Ship | null {
         return this.shipManager?.createShip(type, faction, x, y, {
             waypoints: waypoints ?? undefined,
             randomOffset: 0 // exact placement for direct spawnShip calls

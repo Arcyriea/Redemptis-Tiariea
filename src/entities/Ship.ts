@@ -265,7 +265,7 @@ export class Ship {
         this.immobile = false;
     }
 
-    activateSkills(skillType: string = null) {
+    activateSkills(skillType: string | null = null) {
         if (!skillType) {
             for (const comp of this.compSkill) {
                 if (comp.ready) comp.activate();
@@ -282,7 +282,7 @@ export class Ship {
         }
     }
 
-    takeDamage(damage: number, damageType: string = "normal") {
+    takeDamage(damage: number, _damageType: string = "normal") {
         if (this.invulnerable) return;
 
         if (this.currentShell > 0) {
@@ -312,7 +312,7 @@ export class Ship {
         // Award credits & drop loot if enemy destroyed by player
         if (this.game.factionManager.isEnemyOfFaction(this, YUTIARINALIA)) {
             this.game.credits += Math.round(this.value * 0.001);
-            this.game.uiManager.updateCredits();
+            this.game.uiManager?.updateCredits();
 
             // Drop power-up chance
             if (Math.random() < 0.25) {

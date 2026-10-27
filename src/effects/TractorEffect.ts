@@ -85,7 +85,9 @@ export class TractorEffect {
             this.ship.currentEnergy = Math.min(this.ship.maxEnergy, this.ship.currentEnergy + this.targeted.energy);
 
             this.game.credits += this.targeted.power || 10;
-            this.game.uiManager.updateCredits();
+            if (this.game.uiManager) {
+                this.game.uiManager.updateCredits();
+            }
             this.game.playSound("PowerUp");
 
             this.targeted.removeIt = true;

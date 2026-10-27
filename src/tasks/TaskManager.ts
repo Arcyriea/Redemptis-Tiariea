@@ -56,7 +56,9 @@ export class Task {
         }
 
         // Update task manager
-        this.game.taskManager.onTaskCompleted(this);
+        if (this.game.taskManager) {
+            this.game.taskManager.onTaskCompleted(this);
+        }
     }
 }
 
@@ -86,6 +88,8 @@ export class TaskManager {
 
     onTaskCompleted(task: Task) {
         console.log(`Task completed: ${task.name}`);
-        this.game.uiManager.showNotification(`Task Completed: ${task.name}`);
+        if (this.game.uiManager) {
+            this.game.uiManager.showNotification(`Task Completed: ${task.name}`);
+        }
     }
 }

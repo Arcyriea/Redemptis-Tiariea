@@ -1,5 +1,4 @@
 import { Game } from '../core/Game';
-import { PowerUp } from './PowerUp';
 
 export class Resource {
     public game: Game;

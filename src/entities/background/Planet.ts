@@ -32,6 +32,12 @@ export class PlanetShader extends Phaser.GameObjects.Shader {
             textureKey ? [textureKey] : []
         );
     }
+
+    public setAlpha(value: number): this {
+        const alphaTarget = this as unknown as { alpha: number };
+        alphaTarget.alpha = value;
+        return this;
+    }
 }
 
 export interface PlanetBackgroundOptions {

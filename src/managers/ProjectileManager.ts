@@ -40,7 +40,6 @@ export interface ProjectileAttribution {
  *  - Create a central registry for all transient types
  */
 export class ProjectileManager {
-    private readonly game: Game;
     private scene: Phaser.Scene | null = null;
     private physicsGroup: any = null;
     private ownsPhysicsGroup = false;
@@ -48,8 +47,7 @@ export class ProjectileManager {
     private pool: any[] = [];  // type erased to avoid top-level PhysicsProjectile import
     private active: any[] = [];
 
-    constructor(game: Game) {
-        this.game = game;
+    constructor(_game: Game) {
     }
 
     /** Current number of active projectiles. */

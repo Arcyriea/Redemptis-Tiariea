@@ -47,7 +47,7 @@ export class SpaceBackground {
         this.nebulaStrength = options.nebulaStrength ?? 0.5;
 
         // Lock graphics to screen (scrollFactor 0) so it always covers the viewport
-        this.graphics = scene.add.graphics({ x: 0, y: 0, add: true });
+        this.graphics = scene.add.graphics({ x: 0, y: 0 });
         this.graphics.setScrollFactor(0, 0);
 
         this.generateStars(this.starCount, this.starMaxRadius);

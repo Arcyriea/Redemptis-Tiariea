@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Game } from './core/Game';
 import { MiniMap } from './ui/MiniMap';
-import { PlanetBackground, PlanetShader } from './entities/background/Planet';
+import { PlanetBackground } from './entities/background/Planet';
 import { SpaceBackground } from './entities/background/SpaceBackground';
 import { YUTIARINALIA } from './managers/FactionManager';
 
@@ -39,7 +39,7 @@ class BootScene extends Phaser.Scene {
 
     createDummyTextures() {
         // 1. Core Ship Hull (Blue Rectangle with a triangle front)
-        const core = this.make.graphics({ x: 0, y: 0, add: false });
+        const core = this.make.graphics({ x: 0, y: 0 }, false);
         core.fillStyle(0x3366ff, 1);
         core.fillRect(0, 10, 40, 40); // Body
         core.fillTriangle(40, 10, 40, 50, 60, 30); // Nose
@@ -49,7 +49,7 @@ class BootScene extends Phaser.Scene {
         core.generateTexture('ship-core', 60, 60);
 
         // 2. Wing/Hull Expansion (Lighter blue)
-        const wing = this.make.graphics({ x: 0, y: 0, add: false });
+        const wing = this.make.graphics({ x: 0, y: 0 }, false);
         wing.fillStyle(0x6699ff, 1);
         wing.fillRect(0, 0, 30, 20);
         wing.lineStyle(1, 0xffffff, 1);
@@ -57,7 +57,7 @@ class BootScene extends Phaser.Scene {
         wing.generateTexture('ship-wing', 30, 20);
 
         // 3. Hardpoint (Grey circle)
-        const hp = this.make.graphics({ x: 0, y: 0, add: false });
+        const hp = this.make.graphics({ x: 0, y: 0 }, false);
         hp.fillStyle(0x888888, 1);
         hp.fillCircle(5, 5, 5);
         hp.lineStyle(1, 0x000000, 1);
@@ -65,13 +65,13 @@ class BootScene extends Phaser.Scene {
         hp.generateTexture('hardpoint', 10, 10);
 
         // 4. Projectile (Yellow circle)
-        const bullet = this.make.graphics({ x: 0, y: 0, add: false });
+        const bullet = this.make.graphics({ x: 0, y: 0 }, false);
         bullet.fillStyle(0xffff00, 1);
         bullet.fillCircle(3, 3, 3);
         bullet.generateTexture('bullet', 6, 6);
 
         // 5. Enemy Core (Red)
-        const enemy = this.make.graphics({ x: 0, y: 0, add: false });
+        const enemy = this.make.graphics({ x: 0, y: 0 }, false);
         enemy.fillStyle(0xff3333, 1);
         enemy.fillRect(0, 0, 40, 40);
         enemy.lineStyle(2, 0xffffff, 1);
@@ -98,9 +98,8 @@ class GameScene extends Phaser.Scene {
     private minGameZoom: number = 0.3;
     private maxGameZoom: number = 2.5;
     private zoomStep: number = 0.1;
-    private gameWheelListener: (event: WheelEvent) => void;
+    private gameWheelListener: (event: WheelEvent) => void = () => {};
     private projectiles!: Phaser.Physics.Arcade.Group;
-    private playerProjectiles!: Phaser.Physics.Arcade.Group; // Exposed for Weapon.fireArcadeProjectile
     private playerShip: any = null; // Ship instance linked to player Container
     private infoText!: Phaser.GameObjects.Text;
     private planetBackground!: PlanetBackground;
@@ -190,18 +189,23 @@ class GameScene extends Phaser.Scene {
         (this.player.body as Phaser.Physics.Arcade.Body).setDrag(200);
 
         // Input
-        this.cursors = this.input.keyboard.createCursorKeys();
+        const keyboard = this.input.keyboard;
+        if (!keyboard) {
+            throw new Error('GameScene requires keyboard input to initialize.');
+        }
+
+        this.cursors = keyboard.createCursorKeys();
         this.wasd = {
-            up: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-            down: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-            left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-            right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
+            up: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+            down: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+            left: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+            right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
         };
-        this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+        this.shiftKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
         // Game camera zoom
-        this.zoomKeyIn = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.EQUALS); // = key
-        this.zoomKeyOut = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.MINUS);   // - key
+        this.zoomKeyIn = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PLUS); // = key
+        this.zoomKeyOut = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.MINUS); // - key
         this.gameZoom = 1.0;
         this.minGameZoom = 0.3;
         this.maxGameZoom = 2.5;
@@ -239,9 +243,6 @@ class GameScene extends Phaser.Scene {
                 // Link Phaser body and scene reference for Weapon.fireArcadeProjectile
                 this.playerShip.phaserBody = this.player.body as Phaser.Physics.Arcade.Body;
                 this.playerShip.phaserScene = this;  // Direct GameScene reference
-
-                // Expose projectiles group as playerProjectiles for Weapon.fireArcadeProjectile
-                this.playerProjectiles = this.projectiles;
 
                 // Register with EntityManager (stable ID, NO queue insertion)
                 this.engine.entityManager?.register(this.playerShip, 'ship');
@@ -281,7 +282,7 @@ class GameScene extends Phaser.Scene {
         this.engine.projectileManager?.unbindScene(this);
     }
 
-    update(time, delta) {
+    update(time: number, delta: number) {
         const body = this.player.body as Phaser.Physics.Arcade.Body;
         const acceleration = 600;
         const rotateSpeed = 4;
@@ -525,7 +526,7 @@ const config: Phaser.Types.Core.GameConfig = {
     physics: {
         default: 'arcade',
         arcade: {
-            gravity: { y: 0 },
+            gravity: { x: 0, y: 0 },
             debug: false,
             fixedStep: false
         }
@@ -533,4 +534,4 @@ const config: Phaser.Types.Core.GameConfig = {
     scene: [BootScene, GameScene]
 };
 
-const phaserGame = new Phaser.Game(config);
+new Phaser.Game(config);

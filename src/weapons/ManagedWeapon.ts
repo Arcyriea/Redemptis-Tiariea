@@ -1,6 +1,5 @@
 import { Weapon } from './Weapon';
 import { ProjectileManager } from '../managers/ProjectileManager';
-import { Game } from '../core/Game';
 
 /**
  * ManagedWeapon wraps Weapon to delegate projectile spawning to ProjectileManager.
@@ -16,7 +15,7 @@ export class ManagedWeapon extends Weapon {
         super(); // Game.instance set by Weapon constructor
     }
 
-    async fireArcadeProjectile(ship: any, part: any, target: any): Promise<boolean> {
+    async fireArcadeProjectile(ship: any, part: any, _target: any): Promise<boolean> {
         const scene = ship.phaserScene;
         if (!scene) return false;
 

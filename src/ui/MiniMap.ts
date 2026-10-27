@@ -38,9 +38,7 @@ export class MiniMap extends Phaser.GameObjects.Container {
     private viewportCenterX: number = 80;
     private viewportCenterY: number = 80;
     private clipMinX: number = 5;
-    private clipMaxX: number = 155;
     private clipMinY: number = 5;
-    private clipMaxY: number = 155;
 
     // Input
     private wheelListener: (event: WheelEvent) => void;
@@ -101,9 +99,7 @@ export class MiniMap extends Phaser.GameObjects.Container {
         this.viewportCenterX = this.borderWidth / 2;
         this.viewportCenterY = this.borderHeight / 2;
         this.clipMinX = this.viewportCenterX - this.rectWidth / 2;
-        this.clipMaxX = this.viewportCenterX + this.rectWidth / 2;
         this.clipMinY = this.viewportCenterY - this.rectHeight / 2;
-        this.clipMaxY = this.viewportCenterY + this.rectHeight / 2;
 
         // Reposition container center
         if (this.dotsContainer) {
@@ -291,12 +287,11 @@ export class MiniMap extends Phaser.GameObjects.Container {
     private updateScreenPosition(): void {
         const cam = this.scene.cameras.main;
         const screenW = cam.width;
-        const screenH = cam.height;
         const padding = 10;
         this.setPosition(screenW - this.borderWidth - padding, padding);
     }
 
-    private updateArrow(playerMinimapX: number, playerMinimapY: number, playerShip?: Ship): void {
+    private updateArrow(_playerMinimapX: number, _playerMinimapY: number, playerShip?: Ship): void {
         const currentTask = this.gameInstance.tasks?.[0];
         if (!currentTask) {
             this.arrowSprite.setVisible(false);
