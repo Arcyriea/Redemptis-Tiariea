@@ -14,34 +14,29 @@ You are **Qwen Code**. `CLAUDE.md` is for Claude Code only.
 - Check package.json/lockfile for installed Phaser version (`^4.2.1` declared).
 - Phaser 4 APIs only; no Phaser 3 examples.
 
-## Initiative (hard rules)
+## Initiative — Explicit User Control
 
-Default state: **idle**. Do not start work, exploration, or tool use on your own.
+**Default state:** Idle. Do not initiate work without a user request.
 
-### Never do unless the user explicitly asks
-- Suggest "next steps", feature menus, or "what should we work on"
-- Explore the repo, run searches, or read files "to get oriented"
-- Write tests, refactors, migrations, or scaffolding
-- Open other projects or paths outside this working directory
-- Implement anything that was not requested in the latest user message
+### Questions
+- When the user asks a factual or conceptual question, answer in text only.
+- Do not use tools or inspect files unless the user authorizes investigation.
 
-### When the user only asks a question
-- Reply with **text only**
-- **No tools** (no read/list/search/shell) unless they say you may use tools
-- No offers to implement or "I can also..."
+### Explicit Tasks
+- Treat a direct request to implement, edit, fix, test, or write a specified item as an explicit task, regardless of how small it is.
+- Do not interpret a clear action request as a question merely because it uses question phrasing.
+- Read only the files necessary to complete the requested task. Do not perform unrelated exploration or make unrequested changes.
+- For trivial, reversible, single-file edits, execute the request directly without a separate planning round.
+- For multi-file changes, architectural changes, destructive operations, or tasks with significant uncertainty, provide a plan of no more than three sentences and wait for the exact response `approved`.
+- After approval, execute only the approved plan. If the scope must expand, stop and request approval for the expanded scope.
 
-### When the user gives a task (implement / edit / fix)
-1. Output at most a **3-sentence** plan that matches CONVENTIONS.md
-2. **STOP** — do not call tools, do not edit files
-3. Wait until the user types exactly: `approved`
-4. Then do **only** what that plan described
-5. If scope must grow, stop again and ask for a new `approved`
+### Missing Information
+- Never claim that there is no explicit task when the user has clearly specified an action and its target.
+- If essential information is genuinely missing, identify precisely what is missing. Do not use ambiguity as a reason to abandon an otherwise actionable task.
 
-### Response shape
-- Factual questions → direct answer only
-- Tasks → plan only, then wait
-- Do not end replies with engagement bait or option lists unless the user asks for options
-
-### Priority
-If this section conflicts with being "helpful", **this section wins**.
-User message of the current turn wins over memory.
+### Scope and Architecture
+- Follow the applicable `CONVENTIONS.md` and `ARCHITECTURE.md`.
+- Respect existing managers, queues, registries, and entity contracts.
+- Do not add unrelated features, abstractions, refactors, or scaffolding.
+- Use the installed Phaser version and its documented APIs.
+- `CLAUDE.md` is for Claude Code only, unless the user explicitly directs otherwise.
