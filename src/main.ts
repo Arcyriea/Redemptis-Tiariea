@@ -22,7 +22,22 @@ class BootScene extends Phaser.Scene {
         // crisp at a usable in-game resolution without losing vector detail.
         this.load.svg('human-dreadnought', '/assets/Ships/human-dreadnought.svg', { scale: 0.5 });
         this.load.svg('alien-interceptor', '/assets/Ships/alien-interceptor.svg', { scale: 0.5 });
-        this.load.svg('central-hull', '/assets/Components/01_central_hull.svg', { scale: 0.5 });
+        this.load.svg('central-hull', '/assets/Components/Aistiaria/01_side_hull_angular.svg', { scale: 0.5 });
+
+        const componentSvgs = import.meta.glob<string>(
+            '/src/assets/Components/**/*.svg',
+            { eager: true, query: '?url', import: 'default' }
+        );
+
+        for (const [path, url] of Object.entries(componentSvgs)) {
+            const name = path
+                .replace('/src/assets/Components/', '')
+                .replace(/\.svg$/i, '')
+                .replace(/[^a-z0-9_-]+/gi, '-')
+                .toLowerCase();
+
+            this.load.svg(`component-${name}`, url as string, { scale: 0.5 });
+        }
 
         // Generate dummy textures using graphics
         this.createDummyTextures();
