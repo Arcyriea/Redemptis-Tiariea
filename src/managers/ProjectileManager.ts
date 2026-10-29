@@ -1,4 +1,6 @@
-import { Game } from '../core/Game';
+import type { Game } from '../core/Game';
+import { Ship } from '../entities/Ship';
+import type { FactionId } from './FactionManager';
 // ProjectileAttribution type is defined directly in ProjectileManager to avoid top-level import
 
 /**
@@ -30,16 +32,17 @@ export interface ProjectileAttribution {
  *  - Pool management: acquire, release, reset
  *  - Spawn entry point: captures attribution at fire time
  *  - Per-frame update: ages projectiles, marks expired
+ *  - Collision and damage against eligible logical ships
  *  - Cleanup: returns removeIt-marked projectiles to pool
  *  - Scene binding: creates the physics group when the scene is ready
  *
  * Does NOT:
  *  - Register projectiles in EntityManager (no stable IDs needed)
- *  - Apply damage (collision callback does that)
  *  - Manage weapon cooldown/energy (stays in Component/Weapon)
  *  - Create a central registry for all transient types
  */
 export class ProjectileManager {
+    private readonly game: Game;
     private scene: Phaser.Scene | null = null;
     private physicsGroup: any = null;
     private ownsPhysicsGroup = false;
@@ -47,7 +50,8 @@ export class ProjectileManager {
     private pool: any[] = [];  // type erased to avoid top-level PhysicsProjectile import
     private active: any[] = [];
 
-    constructor(_game: Game) {
+    constructor(game: Game) {
+        this.game = game;
     }
 
     /** Current number of active projectiles. */
@@ -125,6 +129,15 @@ export class ProjectileManager {
             if (proj.ageMs >= proj.lifespanMs && proj.lifespanMs > 0) {
                 proj.removeIt = true;
             }
+
+            const center = this.getProjectileCenter(proj);
+            if (!center) continue;
+
+            if (!proj.removeIt) {
+                this.handleCollisions(proj, center.x, center.y);
+            }
+            proj.previousX = center.x;
+            proj.previousY = center.y;
         }
     }
 
@@ -222,10 +235,15 @@ export class ProjectileManager {
                     attribution: { sourceEntityId: null, sourceFactionId: null },
                     ageMs: 0,
                     lifespanMs: 0,
+                    previousX: 0,
+                    previousY: 0,
                     wasPooled: false,
                     damage: config.damage,
                     removeIt: false,
-                    reset: () => {}
+                    reset() {
+                        this.previousX = 0;
+                        this.previousY = 0;
+                    }
                 };
             }
 
@@ -235,11 +253,6 @@ export class ProjectileManager {
                 }
                 throw new Error('Projectile scene was shut down before the projectile could be created.');
             }
-        }
-
-        // REACTIVATE PHASER BODY
-        if (proj.body) {
-            proj.body.enable = true;
         }
 
         proj.setActive(true);
@@ -260,14 +273,21 @@ export class ProjectileManager {
         proj.setRotation(config.angle);
         proj.damage = config.damage;
 
-        // Add to physics group for collision broadphase FIRST.
-        // The group's createCallbackHandler applies defaults (including velocityX=0, velocityY=0),
-        // so we must set velocity AFTER adding, just like Weapon.fireArcadeProjectile does.
+        // A pooled dynamic body is removed from the Arcade world when its group
+        // member is removed. Re-add the existing body; World.add uses a Set.
+        if (proj.body) {
+            scene.physics.world.enableBody(proj);
+        }
+
         if (proj.body && !physicsGroup.contains(proj)) {
             physicsGroup.add(proj);
         }
+        proj.body?.reset(config.x, config.y);
+        const center = this.getProjectileCenter(proj);
+        proj.previousX = center?.x ?? config.x;
+        proj.previousY = center?.y ?? config.y;
 
-        // NOW set velocity and drag — after group add so defaults don't overwrite them
+        // Reset and group defaults both clear velocity; restore it only afterward.
         const muzzleX = Math.cos(config.angle) * config.muzzleVelocity;
         const muzzleY = Math.sin(config.angle) * config.muzzleVelocity;
         proj.setVelocity(
@@ -293,7 +313,98 @@ export class ProjectileManager {
         }
 
         if (proj.isDestroyed) return;
+        if (proj.body) {
+            this.scene.physics.world.disableBody(proj.body);
+        }
         proj.reset();
         this.pool.push(proj);
+    }
+
+    private handleCollisions(proj: any, currentX: number, currentY: number): void {
+        const entityManager = this.game.entityManager;
+        const factionManager = this.game.factionManager;
+        const sourceEntityId = proj.attribution?.sourceEntityId;
+        const sourceFactionId = proj.attribution?.sourceFactionId as FactionId | null;
+        if (!entityManager || !factionManager || !sourceEntityId || !sourceFactionId) return;
+        if (!factionManager.isFactionRegistered(sourceFactionId)) return;
+
+        const previousX = Number.isFinite(proj.previousX) ? proj.previousX : currentX;
+        const previousY = Number.isFinite(proj.previousY) ? proj.previousY : currentY;
+        const body = proj.body;
+        const projectileRadius = Math.hypot(
+            body.halfWidth ?? body.width / 2,
+            body.halfHeight ?? body.height / 2
+        );
+        if (!Number.isFinite(projectileRadius)) return;
+
+        let earliestTarget: Ship | null = null;
+        let earliestContact = Number.POSITIVE_INFINITY;
+
+        for (const entity of entityManager.getAll()) {
+            if (!(entity instanceof Ship) || entity.id === sourceEntityId) continue;
+            if (!entity.active || entity.removeIt || entity.exploding || entity.isDestroyed) continue;
+            if (!Number.isFinite(entity.x) || !Number.isFinite(entity.y)) continue;
+            if (!Number.isFinite(entity.radius) || entity.radius < 0) continue;
+
+            const targetFactionId = factionManager.getFaction(entity);
+            if (!targetFactionId || !factionManager.isFactionRegistered(targetFactionId)) continue;
+            if (factionManager.getFactionRelationship(sourceFactionId, targetFactionId) !== 'Enemy') continue;
+
+            const contact = this.segmentCircleContact(
+                previousX,
+                previousY,
+                currentX,
+                currentY,
+                entity.x,
+                entity.y,
+                projectileRadius + entity.radius
+            );
+            if (contact !== null && contact < earliestContact) {
+                earliestContact = contact;
+                earliestTarget = entity;
+            }
+        }
+
+        if (!earliestTarget) return;
+
+        proj.removeIt = true;
+        earliestTarget.takeDamage(proj.damage);
+    }
+
+    private getProjectileCenter(proj: any): { x: number; y: number } | null {
+        const center = proj.body?.center;
+        if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
+            return { x: center.x, y: center.y };
+        }
+        return null;
+    }
+
+    private segmentCircleContact(
+        startX: number,
+        startY: number,
+        endX: number,
+        endY: number,
+        centerX: number,
+        centerY: number,
+        radius: number
+    ): number | null {
+        const offsetX = startX - centerX;
+        const offsetY = startY - centerY;
+        const radiusSquared = radius * radius;
+        const startDistanceSquared = offsetX * offsetX + offsetY * offsetY;
+        if (startDistanceSquared <= radiusSquared) return 0;
+
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        const segmentLengthSquared = deltaX * deltaX + deltaY * deltaY;
+        if (segmentLengthSquared === 0) return null;
+
+        const projection = offsetX * deltaX + offsetY * deltaY;
+        const discriminant = projection * projection -
+            segmentLengthSquared * (startDistanceSquared - radiusSquared);
+        if (discriminant < 0) return null;
+
+        const contact = (-projection - Math.sqrt(discriminant)) / segmentLengthSquared;
+        return contact >= 0 && contact <= 1 ? contact : null;
     }
 }

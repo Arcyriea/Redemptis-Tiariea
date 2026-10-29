@@ -38,6 +38,8 @@ export class PhysicsProjectile extends Phaser.Physics.Arcade.Sprite {
     // Manager-side aging (independent of the constructor timer for backward compat)
     public ageMs: number = 0;
     public lifespanMs: number = 0;
+    public previousX: number = 0;
+    public previousY: number = 0;
     public wasPooled: boolean = false;
     public removeIt: boolean = false;
 
@@ -115,6 +117,8 @@ export class PhysicsProjectile extends Phaser.Physics.Arcade.Sprite {
         this.attribution = { sourceEntityId: null, sourceFactionId: null };
         this.ageMs = 0;
         this.lifespanMs = 0;
+        this.previousX = 0;
+        this.previousY = 0;
         this.wasPooled = false;
         this.removeIt = false;
         this.setActive(false);
