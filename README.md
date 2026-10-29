@@ -1,4 +1,5 @@
 <div align="center">
+<img src="https://github.com/Arcyriea/Redemptis-Tiariea/blob/main/Game%20Title.png?raw=true">
 
 # REDEMPTIS TIARIEA - PROTOTYPE STAGE
 
