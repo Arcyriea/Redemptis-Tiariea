@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://github.com/Arcyriea/Redemptis-Tiariea/blob/main/Game%20Title.png?raw=true">
+<img src="https://raw.githubusercontent.com/Arcyriea/Redemptis-Tiariea/refs/heads/main/Game%20Title.png">
 
 # REDEMPTIS TIARIEA - PROTOTYPE STAGE
 
@@ -8,6 +8,8 @@
 That will be the future vision, but for now this Phaser 2D project will be hosted on the web to at the very least depict the openings of the story... as well as to showcase the early concept of the overall gameplay and how the series depiction will go in the future.
 
 Further storyline after this will most likely be a downloadable Steam game in different releases.
+
+The current build of the game is created with assistance from Claude Code, Github Copilot, Qwen Coder and OpenAI's code reviewer. With the sprite assets mostly made by my own manual hand drawing then converted to .svg sprite assets using a website called Vectron, or I create them directly from my Inkscape vector drawing app.
 
 # Factions
 ### + NATIVE BORNS +
