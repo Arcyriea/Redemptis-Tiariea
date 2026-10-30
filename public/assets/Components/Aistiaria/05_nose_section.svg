@@ -1,4 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 260">
-  <path d="M20 130 Q30 70 95 45 L300 15 L340 130 L300 245 L95 215 Q30 190 20 130 Z"
-        fill="none" stroke="#172b62" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 360 260"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="05_nose_section.svg"
+   inkscape:version="1.3 (0e150ed6c4, 2023-07-21)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#999999"
+     borderopacity="1"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="3.1269231"
+     inkscape:cx="180.0492"
+     inkscape:cy="104.41574"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1" />
+  <path
+     d="M20 130 Q30 70 95 45 L300 15 L340 130 L300 245 L95 215 Q30 190 20 130 Z"
+     fill="none"
+     stroke="#172b62"
+     stroke-width="5"
+     stroke-linejoin="round"
+     stroke-linecap="round"
+     id="path1"
+     style="fill:#feeffe;fill-opacity:1;stroke:#df78df;stroke-opacity:1" />
 </svg>
