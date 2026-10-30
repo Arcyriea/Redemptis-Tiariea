@@ -71,6 +71,25 @@ export class ShipManager {
     }
 
     /**
+     * Remove every blueprint whose id starts with the given prefix (including
+     * any that were indexed by syncFromGame under the same namespace). Returns
+     * the number of blueprints removed. Used by test/debug tooling that must be
+     * able to undo its catalogue registrations.
+     */
+    removeBlueprintsByPrefix(prefix: string): number {
+        let removed = 0;
+        for (const [id, blueprint] of Array.from(this.blueprints.entries())) {
+            if (!id.startsWith(prefix)) continue;
+            this.blueprints.delete(id);
+            if (this.bySourceKey.get(blueprint.sourceKey) === blueprint) {
+                this.bySourceKey.delete(blueprint.sourceKey);
+            }
+            removed++;
+        }
+        return removed;
+    }
+
+    /**
      * Rebuild the catalogue from every key currently present in Game.shipData.
      * Safe to call repeatedly: keys already indexed are left untouched, so any
      * manually registered blueprints are preserved. Returns the number of new

@@ -66,6 +66,8 @@ interface DiplomaticAgreement {
     readonly relationship: FactionRelationship;
 }
 
+export const PLAYER_FACTION: FactionId = createFactionId('PlayerFaction');
+
 export const YUTIARINALIA: FactionId = createFactionId('Yutiarinalia');
 export const AISTIARIA: FactionId = createFactionId('Aistiaria');
 export const VERDANIA: FactionId = createFactionId('Verdania');
@@ -183,6 +185,39 @@ export class FactionManager {
 
     getGroups(): DiplomaticGroupId[] {
         return Array.from(this.groups);
+    }
+
+    /**
+     * Unregister a diplomatic group. Factions in the group become independent
+     * again (their stored faction-principal scores resume applying) and every
+     * agreement that had the group as a participant is revoked, so no dangling
+     * principal can be referenced afterwards. Throws when agreements would
+     * leave a pair ambiguous once the group's agreements are dropped.
+     */
+    removeGroup(id: DiplomaticGroupId): boolean {
+        this.assertValidGroupId(id);
+        if (!this.groups.has(id)) return false;
+
+        const memberFactions = Array.from(this.factionGroups.entries())
+            .filter(([, group]) => group === id)
+            .map(([faction]) => faction);
+        const removedAgreements = Array.from(this.agreements.values())
+            .filter((agreement) => agreement.participants.some((p) => p.kind === 'group' && p.id === id));
+
+        for (const agreement of removedAgreements) this.agreements.delete(agreement.id);
+        for (const faction of memberFactions) this.factionGroups.delete(faction);
+
+        try {
+            this.assertNoAmbiguousAgreements();
+        } catch (error) {
+            // Roll back so the registry never ends up half-dismantled.
+            for (const agreement of removedAgreements) this.agreements.set(agreement.id, agreement);
+            for (const faction of memberFactions) this.factionGroups.set(faction, id);
+            throw error;
+        }
+
+        this.groups.delete(id);
+        return true;
     }
 
     /**
@@ -400,6 +435,11 @@ export class FactionManager {
 
     revokeAgreement(id: string): boolean {
         return this.agreements.delete(id);
+    }
+
+    /** True when an agreement with this id is currently registered. */
+    hasAgreement(id: string): boolean {
+        return this.agreements.has(id);
     }
 
     isFactionAlly(a: FactionId, b: FactionId): boolean {
