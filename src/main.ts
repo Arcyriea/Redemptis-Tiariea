@@ -4,6 +4,7 @@ import { MiniMap } from './ui/MiniMap';
 import { PlanetBackground } from './entities/background/Planet';
 import { SpaceBackground } from './entities/background/SpaceBackground';
 import { YUTIARINALIA } from './managers/FactionManager';
+import { publicSvgTextures } from './generated/publicSvgManifest';
 
 // Scene to handle loading and generating dummy textures
 class BootScene extends Phaser.Scene {
@@ -17,12 +18,10 @@ class BootScene extends Phaser.Scene {
         this.load.image('planetMap122', '/assets/Planets/Map-122.png');
         this.load.image('planetMap692', '/assets/Planets/Map-692.png');
 
-        // Load SVG sprites (rasterized to textures by the Loader).
-        // These are blueprint-scale drawings, so a scale factor keeps them
-        // crisp at a usable in-game resolution without losing vector detail.
-        this.load.svg('human-dreadnought', '/assets/Ships/human-dreadnought.svg', { scale: 0.5 });
-        this.load.svg('alien-interceptor', '/assets/Ships/alien-interceptor.svg', { scale: 0.5 });
-        this.load.svg('central-hull', '/assets/Components/Aistiaria/01_side_hull_angular.svg', { scale: 0.5 });
+        // Public SVGs are generated from public/assets; source assets stay separate.
+        for (const asset of publicSvgTextures) {
+            this.load.svg(asset.key, asset.url, { scale: 0.5 });
+        }
 
         const componentSvgs = import.meta.glob<string>(
             '/src/assets/Components/**/*.svg',
@@ -44,6 +43,21 @@ class BootScene extends Phaser.Scene {
     }
 
     create() {
+        for (const asset of publicSvgTextures) {
+            const texture = this.textures.get(asset.key);
+            const source = texture.source[0]?.image;
+
+            for (const alias of asset.aliases) {
+                if (!(source instanceof HTMLImageElement)) {
+                    throw new Error(`Cannot register SVG texture alias "${alias}" for "${asset.key}".`);
+                }
+
+                if (!this.textures.addImage(alias, source)) {
+                    throw new Error(`Failed to register SVG texture alias "${alias}" for "${asset.key}".`);
+                }
+            }
+        }
+
         // Register custom planet shader pipeline
         // In Phaser 4, we use the Shader Game Object directly, so custom pipelines
         // are often unnecessary for simple shaders.

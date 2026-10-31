@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/generate-public-svg-manifest.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/generate-public-svg-manifest.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "tsx --test"
