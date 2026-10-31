@@ -57,6 +57,20 @@ export class ShipManager {
         return blueprint;
     }
 
+    registerBlueprintIfUnused(
+        id: string,
+        sourceKey: string,
+        definition: ShipBlueprintDefinition
+    ): ShipBlueprint {
+        if (this.blueprints.has(id)) {
+            throw new Error(`Ship blueprint ID "${id}" is already registered.`);
+        }
+        if (this.bySourceKey.has(sourceKey)) {
+            throw new Error(`Ship blueprint source key "${sourceKey}" is already registered.`);
+        }
+        return this.registerBlueprint(id, sourceKey, definition);
+    }
+
     getBlueprint(id: string): ShipBlueprint | undefined {
         return this.blueprints.get(id);
     }
@@ -68,6 +82,23 @@ export class ShipManager {
     /** Look up the blueprint whose sourceKey matches a Game.shipData key. */
     getBlueprintForSourceKey(sourceKey: string): ShipBlueprint | undefined {
         return this.bySourceKey.get(sourceKey);
+    }
+
+    /**
+     * Remove this exact blueprint registration without touching replacements
+     * that may now own the same ID or source key.
+     */
+    removeBlueprint(blueprint: ShipBlueprint): boolean {
+        let removed = false;
+        if (this.blueprints.get(blueprint.id) === blueprint) {
+            this.blueprints.delete(blueprint.id);
+            removed = true;
+        }
+        if (this.bySourceKey.get(blueprint.sourceKey) === blueprint) {
+            this.bySourceKey.delete(blueprint.sourceKey);
+            removed = true;
+        }
+        return removed;
     }
 
     /**

@@ -3,8 +3,82 @@ import { Game } from './core/Game';
 import { MiniMap } from './ui/MiniMap';
 import { PlanetBackground } from './entities/background/Planet';
 import { SpaceBackground } from './entities/background/SpaceBackground';
-import { YUTIARINALIA } from './managers/FactionManager';
+import { AISTIARIA, YUTIARINALIA } from './managers/FactionManager';
+import type { FactionId } from './managers/FactionManager';
+import { Ship } from './entities/Ship';
+import { ShipBlueprint } from './managers/ShipBlueprint';
+import type { ShipBlueprintDefinition } from './managers/ShipBlueprint';
 import { publicSvgTextures } from './generated/publicSvgManifest';
+
+interface DebugShipBlueprint {
+    id: string;
+    sourceKey: string;
+    faction: FactionId;
+    definition: ShipBlueprintDefinition;
+}
+
+const DEBUG_SHIP_BLUEPRINTS: readonly DebugShipBlueprint[] = [
+    {
+        id: 'debug.ship.friendly',
+        sourceKey: 'debug-friendly',
+        faction: YUTIARINALIA,
+        definition: {
+            superType: 'Ship',
+            subType: 'Fighter',
+            name: 'Debug Friendly Ship',
+            categoryType: 'Air',
+            stats: {
+                maxHull: 60,
+                maxShell: 40,
+                regenShell: 0,
+                maxEnergy: 100,
+                regenEnergy: 20,
+                maxSpeed: 3,
+                acceleration: 0.3,
+                weight: 12,
+                radius: 22,
+                value: 0
+            },
+            gameplay: {
+                parts: [{ name: 'central-hull', x: 0, y: 0, rotation: 0, isLoot: false }],
+                components: []
+            },
+            visual: {
+                sprites: [{ textureKey: 'public-ships-human-frigate', x: 0, y: 0, scale: 0.18 }]
+            }
+        }
+    },
+    {
+        id: 'debug.ship.hostile',
+        sourceKey: 'debug-hostile',
+        faction: AISTIARIA,
+        definition: {
+            superType: 'Ship',
+            subType: 'Fighter',
+            name: 'Debug Hostile Ship',
+            categoryType: 'Air',
+            stats: {
+                maxHull: 60,
+                maxShell: 40,
+                regenShell: 0,
+                maxEnergy: 100,
+                regenEnergy: 20,
+                maxSpeed: 3,
+                acceleration: 0.3,
+                weight: 12,
+                radius: 22,
+                value: 0
+            },
+            gameplay: {
+                parts: [{ name: 'central-hull', x: 0, y: 0, rotation: 0, isLoot: false }],
+                components: []
+            },
+            visual: {
+                sprites: [{ textureKey: 'public-ships-alien-interceptor', x: 0, y: 0, scale: 0.18 }]
+            }
+        }
+    }
+];
 
 // Scene to handle loading and generating dummy textures
 class BootScene extends Phaser.Scene {
@@ -135,6 +209,12 @@ class GameScene extends Phaser.Scene {
     private spaceBackground!: SpaceBackground;
     private backgroundCamera!: Phaser.Cameras.Scene2D.Camera;
     private uiCamera!: Phaser.Cameras.Scene2D.Camera;
+    private debugFriendlyKey!: Phaser.Input.Keyboard.Key;
+    private debugHostileKey!: Phaser.Input.Keyboard.Key;
+    private debugCleanupKey!: Phaser.Input.Keyboard.Key;
+    private readonly debugShips = new Map<Ship, Phaser.GameObjects.Container>();
+    private readonly debugBlueprints = new Map<string, ShipBlueprint>();
+    private debugSpawnCount = 0;
 
     constructor() {
         super('GameScene');
@@ -231,6 +311,9 @@ class GameScene extends Phaser.Scene {
             right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
         };
         this.shiftKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+        this.debugFriendlyKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1, true);
+        this.debugHostileKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F2);
+        this.debugCleanupKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3);
 
         // Game camera zoom
         this.zoomKeyIn = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PLUS); // = key
@@ -289,6 +372,7 @@ class GameScene extends Phaser.Scene {
 
         // SHUTDOWN cleanup for player Ship (Step 5)
         this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
+            this.cleanupDebugShips();
             this.cleanupPlayerShip();
         });
     }
@@ -431,6 +515,15 @@ class GameScene extends Phaser.Scene {
 
         // Run engine update logic (reverse-engineered from AS3)
         this.engine.update(time, delta);
+        this.synchronizeDebugShips();
+
+        if (Phaser.Input.Keyboard.JustDown(this.debugFriendlyKey)) {
+            this.spawnDebugShip(DEBUG_SHIP_BLUEPRINTS[0]);
+        } else if (Phaser.Input.Keyboard.JustDown(this.debugHostileKey)) {
+            this.spawnDebugShip(DEBUG_SHIP_BLUEPRINTS[1]);
+        } else if (Phaser.Input.Keyboard.JustDown(this.debugCleanupKey)) {
+            this.cleanupDebugShips();
+        }
 
         // Game camera zoom input (keyboard)
         if (Phaser.Input.Keyboard.JustDown(this.zoomKeyIn)) {
@@ -442,6 +535,127 @@ class GameScene extends Phaser.Scene {
         for (const bullet of this.projectiles.getChildren() as Phaser.Physics.Arcade.Sprite[]) {
             this.backgroundCamera.ignore(bullet); // Background camera ignores projectiles
         }
+    }
+
+    private ensureDebugBlueprints(): void {
+        const shipManager = this.engine.shipManager;
+        if (!shipManager) {
+            throw new Error('Cannot spawn debug ships without ShipManager.');
+        }
+
+        const missing: DebugShipBlueprint[] = [];
+        for (const entry of DEBUG_SHIP_BLUEPRINTS) {
+            const tracked = this.debugBlueprints.get(entry.id);
+            if (tracked) {
+                if (shipManager.getBlueprint(entry.id) !== tracked ||
+                    shipManager.getBlueprintForSourceKey(entry.sourceKey) !== tracked) {
+                    throw new Error(`Debug ship blueprint "${entry.id}" is no longer registered by this scene.`);
+                }
+                continue;
+            }
+            if (shipManager.hasBlueprint(entry.id) || shipManager.getBlueprintForSourceKey(entry.sourceKey)) {
+                throw new Error(
+                    `Cannot register debug blueprint "${entry.id}" with source key "${entry.sourceKey}": one is already in use.`
+                );
+            }
+            missing.push(entry);
+        }
+
+        const newlyRegistered: ShipBlueprint[] = [];
+        try {
+            for (const entry of missing) {
+                const blueprint = shipManager.registerBlueprintIfUnused(
+                    entry.id,
+                    entry.sourceKey,
+                    entry.definition
+                );
+                this.debugBlueprints.set(entry.id, blueprint);
+                newlyRegistered.push(blueprint);
+            }
+        } catch (error) {
+            for (const blueprint of newlyRegistered) {
+                shipManager.removeBlueprint(blueprint);
+                this.debugBlueprints.delete(blueprint.id);
+            }
+            throw error;
+        }
+    }
+
+    private spawnDebugShip(entry: DebugShipBlueprint): void {
+        this.ensureDebugBlueprints();
+        const shipManager = this.engine.shipManager;
+        const blueprint = this.debugBlueprints.get(entry.id);
+        if (!shipManager || !blueprint?.shipDefinition) {
+            throw new Error(`Debug ship blueprint "${entry.id}" is unavailable.`);
+        }
+
+        for (const visual of blueprint.shipDefinition.visual.sprites) {
+            if (!this.textures.exists(visual.textureKey)) {
+                throw new Error(
+                    `Debug ship blueprint "${entry.id}" references missing Phaser texture "${visual.textureKey}".`
+                );
+            }
+        }
+
+        const angle = this.debugSpawnCount * 2.4;
+        const radius = 100 + Math.floor(this.debugSpawnCount / 8) * 65;
+        this.debugSpawnCount++;
+        const ship = shipManager.createShip(
+            entry.sourceKey,
+            entry.faction,
+            this.player.x + Math.cos(angle) * radius,
+            this.player.y + Math.sin(angle) * radius,
+            { randomOffset: 0 }
+        );
+        if (!ship) {
+            throw new Error(`ShipManager could not create debug ship "${entry.id}".`);
+        }
+
+        let container: Phaser.GameObjects.Container | undefined;
+        try {
+            container = this.add.container(ship.x, ship.y);
+            for (const visual of blueprint.shipDefinition.visual.sprites) {
+                const sprite = this.add.sprite(visual.x, visual.y, visual.textureKey);
+                if (visual.scale !== undefined) sprite.setScale(visual.scale);
+                container.add(sprite);
+            }
+            container.rotation = Phaser.Math.DegToRad(ship.rotation);
+            this.backgroundCamera.ignore(container);
+            this.uiCamera.ignore(container);
+            this.debugShips.set(ship, container);
+        } catch (error) {
+            container?.destroy();
+            shipManager.disposeShip(ship);
+            throw error;
+        }
+    }
+
+    private synchronizeDebugShips(): void {
+        for (const [ship, container] of this.debugShips) {
+            if (!ship.active || ship.removeIt || !this.engine.shipQueue.includes(ship)) {
+                container.destroy();
+                this.debugShips.delete(ship);
+                continue;
+            }
+            container.setPosition(ship.x, ship.y);
+            container.rotation = Phaser.Math.DegToRad(ship.rotation);
+        }
+    }
+
+    private cleanupDebugShips(): void {
+        const shipManager = this.engine.shipManager;
+        for (const [ship, container] of this.debugShips) {
+            container.destroy();
+            shipManager?.disposeShip(ship);
+        }
+        this.debugShips.clear();
+
+        if (shipManager) {
+            for (const blueprint of this.debugBlueprints.values()) {
+                shipManager.removeBlueprint(blueprint);
+            }
+        }
+        this.debugBlueprints.clear();
     }
 
     /** Set game camera zoom with clamping. */
@@ -512,7 +726,12 @@ class GameScene extends Phaser.Scene {
         cameras.unshift(this.backgroundCamera);
 
         // UI Text (created early so it can be ignored by background camera)
-        this.infoText = this.add.text(10, 10, 'Arrows/WASD: Move/Turn | Hold SHIFT: Aim with Mouse & Strafe | Hold Left Mouse: Fire', { color: '#ffffff' }).setScrollFactor(0);
+        this.infoText = this.add.text(
+            10,
+            10,
+            'Move: Arrows/WASD | Aim/Strafe: SHIFT | Fire: Mouse\nF1 Friendly | F2 Hostile | F3 Clear test ships',
+            { color: '#ffffff' }
+        ).setScrollFactor(0);
 
         // Background camera ignores all world objects (renders only space background)
         // Note: projectiles are in a Group (not GameObject), omitted from ignore list.

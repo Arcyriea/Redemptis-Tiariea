@@ -4,13 +4,16 @@ import { Game } from '../src/core/Game';
 import { ObjectPool } from '../src/core/ObjectPool';
 import { EntityManager } from '../src/managers/EntityManager';
 import { ShipManager } from '../src/managers/ShipManager';
+import { ShipBlueprint } from '../src/managers/ShipBlueprint';
 import { Ship } from '../src/entities/Ship';
+import type { ShipBlueprintDefinition } from '../src/managers/ShipBlueprint';
 import {
     AISTIARIA,
     FactionManager,
     RESERVED_FACTIONS,
     YUTIARINALIA
 } from '../src/managers/FactionManager';
+import { publicSvgTextures } from '../src/generated/publicSvgManifest';
 
 function createGame(): Game {
     // This harness bypasses Game's constructor and initSystems(). It supplies
@@ -385,4 +388,150 @@ test('empty spawn processing and missing object pool do not create ships', () =>
 
     assert.deepEqual(game.shipQueue, []);
     assert.equal(game.entityManager!.size, 0);
+});
+
+test('debug ship artwork keys are present in the generated public SVG manifest', () => {
+    const textureKeys = new Set(publicSvgTextures.map((asset) => asset.key));
+
+    assert.equal(textureKeys.has('public-ships-human-frigate'), true);
+    assert.equal(textureKeys.has('public-ships-alien-interceptor'), true);
+});
+
+test('debug-faction ships retain relationships and lifecycle identity across pooled respawns', () => {
+    const game = createGame();
+    const debugDefinition: ShipBlueprintDefinition = {
+        superType: 'Ship',
+        subType: 'Fighter',
+        name: 'Debug Ship',
+        categoryType: 'Air',
+        stats: {
+            maxHull: 60,
+            maxShell: 40,
+            regenShell: 0,
+            maxEnergy: 100,
+            regenEnergy: 20,
+            maxSpeed: 3,
+            acceleration: 0.3,
+            weight: 12,
+            radius: 22,
+            value: 0
+        },
+        gameplay: {
+            parts: [{ name: 'central-hull', x: 0, y: 0, rotation: 0, isLoot: false }],
+            components: []
+        },
+        visual: { sprites: [] }
+    };
+    game.shipManager!.registerBlueprint('debug.ship.friendly', 'debug-friendly', debugDefinition);
+    game.shipManager!.registerBlueprint('debug.ship.hostile', 'debug-hostile', debugDefinition);
+
+    const friendly = game.shipManager!.createShip('debug-friendly', YUTIARINALIA, 100, 200, {
+        randomOffset: 0
+    });
+    const hostile = game.shipManager!.createShip('debug-hostile', AISTIARIA, 300, 400, {
+        randomOffset: 0
+    });
+
+    assert.ok(friendly);
+    assert.ok(hostile);
+    assert.equal(game.factionManager.getFaction(friendly), YUTIARINALIA);
+    assert.equal(game.factionManager.isAllyOfFaction(friendly, YUTIARINALIA), true);
+    assert.equal(game.factionManager.getFaction(hostile), AISTIARIA);
+    assert.equal(game.factionManager.isEnemyOfFaction(hostile, YUTIARINALIA), true);
+    assert.equal(game.shipQueue.includes(friendly), true);
+    assert.equal(game.shipQueue.includes(hostile), true);
+    assert.equal(game.entityManager!.get(friendly.id!), friendly);
+    assert.equal(game.entityManager!.get(hostile.id!), hostile);
+
+    const friendlyId = friendly.id;
+    const hostileId = hostile.id;
+    game.shipManager!.disposeShip(friendly);
+    game.shipManager!.disposeShip(hostile);
+
+    assert.equal(game.shipQueue.length, 0);
+    assert.equal(game.entityManager!.has(friendly), false);
+    assert.equal(game.entityManager!.has(hostile), false);
+    assert.equal(game.factionManager.getFaction(friendly), undefined);
+    assert.equal(game.factionManager.getFaction(hostile), undefined);
+
+    const reusedFriendly = game.shipManager!.createShip('debug-friendly', YUTIARINALIA, 500, 600, {
+        randomOffset: 0
+    });
+    const reusedHostile = game.shipManager!.createShip('debug-hostile', AISTIARIA, 700, 800, {
+        randomOffset: 0
+    });
+
+    assert.equal(reusedFriendly, friendly);
+    assert.equal(reusedHostile, hostile);
+    assert.notEqual(reusedFriendly?.id, friendlyId);
+    assert.notEqual(reusedHostile?.id, hostileId);
+    assert.equal(game.factionManager.isAllyOfFaction(reusedFriendly, YUTIARINALIA), true);
+    assert.equal(game.factionManager.isEnemyOfFaction(reusedHostile, YUTIARINALIA), true);
+    assert.equal(game.entityManager!.get(reusedFriendly!.id!), reusedFriendly);
+    assert.equal(game.entityManager!.get(reusedHostile!.id!), reusedHostile);
+});
+
+test('exact blueprint removal preserves different replacements sharing either index', () => {
+    const game = createGame();
+    const original = new ShipBlueprint('debug.ship', 'debug-source');
+    const replacementById = new ShipBlueprint('debug.ship', 'replacement-source');
+
+    game.shipManager!.registerBlueprint(original);
+    game.shipManager!.registerBlueprint(replacementById);
+
+    assert.equal(game.shipManager!.removeBlueprint(original), true);
+    assert.equal(game.shipManager!.getBlueprint('debug.ship'), replacementById);
+    assert.equal(game.shipManager!.getBlueprintForSourceKey('debug-source'), undefined);
+    assert.equal(game.shipManager!.getBlueprintForSourceKey('replacement-source'), replacementById);
+
+    const originalBySource = new ShipBlueprint('debug.other', 'shared-source');
+    const replacementBySource = new ShipBlueprint('replacement.other', 'shared-source');
+    game.shipManager!.registerBlueprint(originalBySource);
+    game.shipManager!.registerBlueprint(replacementBySource);
+
+    assert.equal(game.shipManager!.removeBlueprint(originalBySource), true);
+    assert.equal(game.shipManager!.getBlueprint('debug.other'), undefined);
+    assert.equal(game.shipManager!.getBlueprint('replacement.other'), replacementBySource);
+    assert.equal(game.shipManager!.getBlueprintForSourceKey('shared-source'), replacementBySource);
+});
+
+test('unused-only blueprint registration rejects occupied IDs or source keys without replacement', () => {
+    const game = createGame();
+    const byId = new ShipBlueprint('occupied-id', 'first-source');
+    const bySource = new ShipBlueprint('second-id', 'occupied-source');
+    game.shipManager!.registerBlueprint(byId);
+    game.shipManager!.registerBlueprint(bySource);
+
+    const definition: ShipBlueprintDefinition = {
+        superType: 'Ship',
+        subType: 'Fighter',
+        name: 'Unused test blueprint',
+        categoryType: 'Air',
+        stats: {
+            maxHull: 1,
+            maxShell: 0,
+            regenShell: 0,
+            maxEnergy: 0,
+            maxSpeed: 0,
+            acceleration: 0,
+            weight: 1,
+            radius: 1,
+            value: 0
+        },
+        gameplay: { parts: [], components: [] },
+        visual: { sprites: [] }
+    };
+
+    assert.throws(
+        () => game.shipManager!.registerBlueprintIfUnused('occupied-id', 'unused-source', definition),
+        /ID "occupied-id" is already registered/
+    );
+    assert.throws(
+        () => game.shipManager!.registerBlueprintIfUnused('unused-id', 'occupied-source', definition),
+        /source key "occupied-source" is already registered/
+    );
+    assert.equal(game.shipManager!.getBlueprint('occupied-id'), byId);
+    assert.equal(game.shipManager!.getBlueprintForSourceKey('first-source'), byId);
+    assert.equal(game.shipManager!.getBlueprint('second-id'), bySource);
+    assert.equal(game.shipManager!.getBlueprintForSourceKey('occupied-source'), bySource);
 });
