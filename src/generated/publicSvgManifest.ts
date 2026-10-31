@@ -131,11 +131,6 @@ export const publicSvgTextures: readonly PublicSvgTexture[] =
         "aliases": []
     },
     {
-        "key": "public-ships-gemini-svg",
-        "url": "/assets/Ships/gemini-svg.svg",
-        "aliases": []
-    },
-    {
         "key": "public-ships-human-dreadnought",
         "url": "/assets/Ships/human-dreadnought.svg",
         "aliases": [
@@ -150,6 +145,11 @@ export const publicSvgTextures: readonly PublicSvgTexture[] =
     {
         "key": "public-ships-void-dreadnought",
         "url": "/assets/Ships/void-dreadnought.svg",
+        "aliases": []
+    },
+    {
+        "key": "public-ships-yutiarin-starblade-destroyer",
+        "url": "/assets/Ships/yutiarin-starblade-destroyer.svg",
         "aliases": []
     },
     {
