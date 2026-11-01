@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Game } from './core/Game';
-import { MiniMap } from './ui/MiniMap';
+import { MINIMAP_SHIP_ICON_ASSETS, MiniMap } from './ui/MiniMap';
 import { PlanetBackground } from './entities/background/Planet';
 import { SpaceBackground } from './entities/background/SpaceBackground';
 import { AISTIARIA, YUTIARINALIA } from './managers/FactionManager';
@@ -94,6 +94,10 @@ class BootScene extends Phaser.Scene {
 
         // Public SVGs are generated from public/assets; source assets stay separate.
         for (const asset of publicSvgTextures) {
+            this.load.svg(asset.key, asset.url, { scale: 0.5 });
+        }
+
+        for (const asset of Object.values(MINIMAP_SHIP_ICON_ASSETS)) {
             this.load.svg(asset.key, asset.url, { scale: 0.5 });
         }
 

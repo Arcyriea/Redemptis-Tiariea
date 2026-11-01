@@ -2,6 +2,26 @@ import Phaser from 'phaser';
 import { Game } from '../core/Game';
 import { Ship } from '../entities/Ship';
 
+export const MINIMAP_SHIP_ICON_ASSETS = {
+    capitalShip: { key: 'minimap-capital-ship', url: '/minimap/Capital-Ship.svg' },
+    corvette: { key: 'minimap-corvette', url: '/minimap/Corvette.svg' },
+    fighter: { key: 'minimap-fighter', url: '/minimap/Fighter.svg' }
+} as const;
+
+const DEFAULT_MINIMAP_SHIP_ICON = MINIMAP_SHIP_ICON_ASSETS.capitalShip.key;
+const MINIMAP_ICON_BY_SHIP_TYPE: Readonly<Partial<Record<string, string>>> = {};
+const MINIMAP_ICON_TINTS = {
+    Neutral: 0xaaaaaa,
+    Enemy: 0xff0000,
+    Ally: 0x00ff00,
+    Player: 0x00ffff
+} as const;
+const MINIMAP_SHIP_ICON_BASE_SIZE = 18;
+
+function getMinimapShipIconKey(ship: Ship): string {
+    return MINIMAP_ICON_BY_SHIP_TYPE[ship.type] ?? DEFAULT_MINIMAP_SHIP_ICON;
+}
+
 /**
  * MiniMap - ShellCore-style radar showing ships, stations, and planets.
  * Tracks the player position with zoom support. Dots clip at the circular boundary.
@@ -13,6 +33,7 @@ export class MiniMap extends Phaser.GameObjects.Container {
     private bgGraphics: Phaser.GameObjects.Graphics;
     private dotsGraphics: Phaser.GameObjects.Graphics;
     private arrowSprite: Phaser.GameObjects.Sprite;
+    private shipIcons: Map<Ship, Phaser.GameObjects.Sprite> = new Map();
 
     // Minimap base dimensions (at zoom = 1)
     private baseRectWidth: number = 150;
@@ -174,9 +195,45 @@ export class MiniMap extends Phaser.GameObjects.Container {
                my <= playerMinimapY + halfH;
     }
 
-    private findPlayerShip(): Ship | undefined {
-        return this.gameInstance.entityManager?.getAll()
-            .find((entity): entity is Ship => entity instanceof Ship && entity.subType === 'Player');
+    private getActiveShips(): Ship[] {
+        const ships = new Set<Ship>();
+        for (const entity of this.gameInstance.entityManager?.getAll() ?? []) {
+            if (entity instanceof Ship) ships.add(entity);
+        }
+        for (const ship of this.gameInstance.shipQueue) {
+            ships.add(ship);
+        }
+        return Array.from(ships).filter((ship) => ship.active && !ship.removeIt);
+    }
+
+    private reconcileShipIcons(ships: readonly Ship[]): void {
+        const activeShips = new Set(ships);
+        for (const [ship, icon] of this.shipIcons) {
+            if (activeShips.has(ship)) continue;
+            icon.destroy();
+            this.shipIcons.delete(ship);
+        }
+    }
+
+    private updateShipIcon(ship: Ship, minimapX: number, minimapY: number, tint: number): void {
+        const textureKey = getMinimapShipIconKey(ship);
+        let icon = this.shipIcons.get(ship);
+        if (!icon) {
+            icon = new Phaser.GameObjects.Sprite(this.scene, 0, 0, textureKey);
+            icon.setOrigin(0.5);
+            this.shipIcons.set(ship, icon);
+            this.dotsContainer.add(icon);
+        } else if (icon.texture.key !== textureKey) {
+            icon.setTexture(textureKey);
+        }
+
+        const iconSize = MINIMAP_SHIP_ICON_BASE_SIZE * this.zoom;
+        icon.setDisplaySize(iconSize, iconSize);
+        icon.setPosition(minimapX, minimapY);
+        icon.setRotation(Phaser.Math.DegToRad(ship.rotation));
+        icon.setTint(tint);
+        icon.setVisible(true);
+        this.dotsContainer.bringToTop(icon);
     }
 
     /**
@@ -190,13 +247,22 @@ export class MiniMap extends Phaser.GameObjects.Container {
         const scene = this.scene;
         if (!scene) return;
 
+        const ships = this.getActiveShips();
+        const ordinaryShips = ships.filter(
+            (ship) => ship.superType !== 'Station' && ship.superType !== 'Turret'
+        );
+        this.reconcileShipIcons(ordinaryShips);
+        for (const icon of this.shipIcons.values()) {
+            icon.setVisible(false);
+        }
+
         // Find player position
         let playerX = 0;
         let playerY = 0;
         let foundPlayer = false;
 
-        const playerShip = this.findPlayerShip();
-        if (playerShip && playerShip.active && !playerShip.removeIt) {
+        const playerShip = ships.find((ship) => ship.subType === 'Player');
+        if (playerShip) {
             playerX = playerShip.x;
             playerY = playerShip.y;
             foundPlayer = true;
@@ -256,28 +322,25 @@ export class MiniMap extends Phaser.GameObjects.Container {
             }
         }
 
-        const relationshipColors = [
-            { relationship: 'Neutral' as const, color: 0xaaaaaa },
-            { relationship: 'Enemy' as const, color: 0xff0000 },
-            { relationship: 'Ally' as const, color: 0x00ff00 }
-        ];
-        for (const { relationship, color } of relationshipColors) {
-            this.dotsGraphics.fillStyle(color, 1);
-            for (const ship of this.gameInstance.shipQueue) {
-                if (ship.removeIt || ship === playerShip ||
-                    ship.superType === 'Station' || ship.superType === 'Turret') continue;
-                if (this.gameInstance.factionManager.getRelationship(playerShip, ship) !== relationship) continue;
+        const relationshipOrder = ['Neutral', 'Enemy', 'Ally'] as const;
+        for (const relationship of relationshipOrder) {
+            for (const ship of ordinaryShips) {
+                if (ship === playerShip) continue;
+                if (playerShip && this.gameInstance.factionManager.getRelationship(playerShip, ship) !== relationship) continue;
                 const mx = ship.x * this.scaleFactor;
                 const my = ship.y * this.scaleFactor;
-                if (this.isInViewport(mx, my, 2, playerMinimapX, playerMinimapY)) {
-                    this.dotsGraphics.fillCircle(mx, my, 2);
+                const iconRadius = MINIMAP_SHIP_ICON_BASE_SIZE * this.zoom / 2;
+                if (this.isInViewport(mx, my, iconRadius, playerMinimapX, playerMinimapY)) {
+                    this.updateShipIcon(ship, mx, my, MINIMAP_ICON_TINTS[relationship]);
                 }
             }
         }
 
-        // 5. Player Dot (Cyan) - ALWAYS on top, always at center
-        this.dotsGraphics.fillStyle(0x00ffff, 1);
-        this.dotsGraphics.fillCircle(playerMinimapX, playerMinimapY, 5);
+        // Keep the player marker above other ships, including when also queued.
+        if (playerShip) {
+            this.updateShipIcon(playerShip, playerMinimapX, playerMinimapY, MINIMAP_ICON_TINTS.Player);
+        }
+        this.dotsContainer.bringToTop(this.arrowSprite);
 
         // Update Objective Arrow
         this.updateArrow(playerMinimapX, playerMinimapY, playerShip);
@@ -350,6 +413,10 @@ export class MiniMap extends Phaser.GameObjects.Container {
         this.scene.input.keyboard?.off('keydown-N');
         this.scene.input.keyboard?.off('keydown-ADD');
         this.scene.input.keyboard?.off('keydown-SUBTRACT');
+        for (const icon of this.shipIcons.values()) {
+            icon.destroy();
+        }
+        this.shipIcons.clear();
         this.dotsGraphics.destroy();
         this.bgGraphics.destroy();
         this.arrowSprite.destroy();
