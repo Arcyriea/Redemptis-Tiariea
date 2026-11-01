@@ -1,17 +1,12 @@
 import { Game } from '../core/Game';
+import type {
+    ShipBlueprintDefinition as CanonicalShipBlueprintDefinition,
+    ShipBlueprintStats as CanonicalShipBlueprintStats,
+    LegacyShipDefinition as CanonicalLegacyShipDefinition
+} from '../types/Shipmaker';
 
-export interface ShipBlueprintStats {
-    maxHull: number;
-    maxShell: number;
-    regenShell: number;
-    maxEnergy: number;
-    regenEnergy?: number;
-    maxSpeed: number;
-    acceleration: number;
-    weight: number;
-    radius: number;
-    value: number;
-}
+export type ShipBlueprintStats = CanonicalShipBlueprintStats;
+export type LegacyShipDefinition = CanonicalLegacyShipDefinition;
 
 export interface ShipBlueprintPart {
     name: string;
@@ -34,6 +29,7 @@ export interface ShipBlueprintVisualSprite {
     scale?: number;
 }
 
+/** Existing structured blueprint shape retained for player and debug ships. */
 export interface ShipBlueprintDefinition {
     superType: string;
     subType: string;
@@ -49,14 +45,11 @@ export interface ShipBlueprintDefinition {
     };
 }
 
-export type LegacyShipDefinition = [
-    parts: unknown[][],
-    components: unknown[][],
-    superType: string,
-    subType: string,
-    name: string,
-    categoryType: string
-];
+export type StructuredShipBlueprintDefinition =
+    | CanonicalShipBlueprintDefinition
+    | ShipBlueprintDefinition;
+
+export type LegacyShipTuple = CanonicalLegacyShipDefinition;
 
 /**
  * Stable catalogue entry for a ship definition. Structured definitions are
@@ -66,16 +59,16 @@ export type LegacyShipDefinition = [
 export class ShipBlueprint {
     public readonly id: string;
     public readonly sourceKey: string;
-    public readonly shipDefinition?: ShipBlueprintDefinition;
+    public readonly shipDefinition?: StructuredShipBlueprintDefinition;
 
-    constructor(id: string, sourceKey: string, shipDefinition?: ShipBlueprintDefinition) {
+    constructor(id: string, sourceKey: string, shipDefinition?: StructuredShipBlueprintDefinition) {
         this.id = id;
         this.sourceKey = sourceKey;
         this.shipDefinition = shipDefinition;
     }
 
     /** Resolve a structured blueprint first, then the legacy tuple if present. */
-    get definition(): ShipBlueprintDefinition | LegacyShipDefinition | undefined {
+    get definition(): StructuredShipBlueprintDefinition | LegacyShipTuple | undefined {
         return this.shipDefinition ?? Game.instance?.shipData?.[this.sourceKey];
     }
 

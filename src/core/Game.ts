@@ -9,6 +9,13 @@ import { EntityManager } from '../managers/EntityManager';
 import { ShipManager } from '../managers/ShipManager';
 import { FactionId, FactionManager } from '../managers/FactionManager';
 import { ProjectileManager } from '../managers/ProjectileManager';
+import {
+    ComponentDefinition,
+    HullDefinition,
+    LegacyCompatibilityView,
+    ShipLoadout
+} from '../types/Shipmaker';
+import { ShipDataAdapter } from './ShipDataAdapter';
 
 export class Game {
     // Core game state
@@ -26,14 +33,20 @@ export class Game {
     public respawnQueue: Ship[] = [];
 
     // Game data
-    public shipData: any = {}; // Ship definitions
+    public shipData: any = {};
     public partData: any = {}; // Part definitions
-    public componentData: any = {}; // Component definitions
+    public componentData: any = {};
     public shipPartsData: any[] = []; // Player ship parts
     public yardPartsData: any[] = []; // Enemy/AI parts
     public knownSectors: string[] = []; // Sector keys
     public tasks: any[] = [];
     public commander: any = null;
+
+    // --- Shipmaker Canonical Registries ---
+    public hullDefinitions = new Map<string, HullDefinition>();
+    public componentDefinitions = new Map<string, ComponentDefinition>();
+    public shipLoadouts = new Map<string, ShipLoadout>();
+    public legacyCompatibilityViews = new Map<string, LegacyCompatibilityView>();
 
     // Game state
     public credits: number = 0;
@@ -110,6 +123,9 @@ export class Game {
         this.componentData = {
             "PlayerCannon": ["Weapon", "ProjectileArcade", 10, 400, 0.15, 5, 600, 0] // cooldown 0.15s = 150ms
         };
+
+        // --- Shipmaker Phase 1: Legacy Ingest ---
+        ShipDataAdapter.ingestLegacyData(this);
 
         this.shipManager?.registerBlueprint('ship.player', 'player', {
             superType: 'Ship',

@@ -101,21 +101,6 @@ class BootScene extends Phaser.Scene {
             this.load.svg(asset.key, asset.url, { scale: 0.5 });
         }
 
-        const componentSvgs = import.meta.glob<string>(
-            '/src/assets/Components/**/*.svg',
-            { eager: true, query: '?url', import: 'default' }
-        );
-
-        for (const [path, url] of Object.entries(componentSvgs)) {
-            const name = path
-                .replace('/src/assets/Components/', '')
-                .replace(/\.svg$/i, '')
-                .replace(/[^a-z0-9_-]+/gi, '-')
-                .toLowerCase();
-
-            this.load.svg(`component-${name}`, url as string, { scale: 0.5 });
-        }
-
         // Generate dummy textures using graphics
         this.createDummyTextures();
     }
@@ -285,7 +270,7 @@ class GameScene extends Phaser.Scene {
 
         const playerBlueprint = this.engine.shipManager?.getBlueprintForSourceKey('player');
         const playerDefinition = playerBlueprint?.shipDefinition;
-        if (!playerBlueprint || !playerDefinition) {
+        if (!playerBlueprint || !playerDefinition || !('visual' in playerDefinition)) {
             throw new Error('The player ship blueprint is not registered.');
         }
 
@@ -589,11 +574,12 @@ class GameScene extends Phaser.Scene {
         this.ensureDebugBlueprints();
         const shipManager = this.engine.shipManager;
         const blueprint = this.debugBlueprints.get(entry.id);
-        if (!shipManager || !blueprint?.shipDefinition) {
+        const definition = blueprint?.shipDefinition;
+        if (!shipManager || !definition || !('visual' in definition)) {
             throw new Error(`Debug ship blueprint "${entry.id}" is unavailable.`);
         }
 
-        for (const visual of blueprint.shipDefinition.visual.sprites) {
+        for (const visual of definition.visual.sprites) {
             if (!this.textures.exists(visual.textureKey)) {
                 throw new Error(
                     `Debug ship blueprint "${entry.id}" references missing Phaser texture "${visual.textureKey}".`
@@ -618,7 +604,7 @@ class GameScene extends Phaser.Scene {
         let container: Phaser.GameObjects.Container | undefined;
         try {
             container = this.add.container(ship.x, ship.y);
-            for (const visual of blueprint.shipDefinition.visual.sprites) {
+            for (const visual of definition.visual.sprites) {
                 const sprite = this.add.sprite(visual.x, visual.y, visual.textureKey);
                 if (visual.scale !== undefined) sprite.setScale(visual.scale);
                 container.add(sprite);

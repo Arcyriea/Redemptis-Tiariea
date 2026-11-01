@@ -1,8 +1,14 @@
 import { Game } from '../core/Game';
 import { Component } from './Component';
 import { TractorEffect } from '../effects/TractorEffect';
-import { ShipBlueprintDefinition, ShipBlueprintPart } from '../managers/ShipBlueprint';
 import { YUTIARINALIA } from '../managers/FactionManager';
+import type {
+    ComponentDefinition,
+    HullDefinition,
+    LegacyShipDefinition,
+    ShipBlueprintDefinition as CanonicalShipBlueprintDefinition
+} from '../types/Shipmaker';
+import type { ShipBlueprintDefinition as LegacyStructuredShipBlueprint } from '../managers/ShipBlueprint';
 
 export class Ship {
     [x: string]: any;
@@ -78,90 +84,40 @@ export class Ship {
         this.game = Game.instance;
     }
 
-    init(type: string) {
+    init(type: string): void {
         this.type = type;
         this.regenEnergy = 20;
         this.removeIt = false;
         this.exploding = false;
+        this.immobile = false;
+        this.parts.length = 0;
+        this.components.length = 0;
+        this.compSkill.length = 0;
+        this.compWeapon.length = 0;
+        this.compSpawn.length = 0;
+        this.compPassive.length = 0;
+        if (this.tractor) this.tractor.removeIt = true;
+        this.tractor = null;
 
-        const blueprint = this.game.shipManager?.getBlueprintForSourceKey(this.type)?.shipDefinition;
-        const legacyShipDef = blueprint ? undefined : this.game.shipData[this.type];
-        if (blueprint || legacyShipDef) {
-            let partsData: ShipBlueprintPart[];
-            const componentsByPart = new Map<number, string[]>();
-
-            if (blueprint) {
-                this.applyBlueprint(blueprint);
-                partsData = blueprint.gameplay.parts;
-                for (const attachment of blueprint.gameplay.components) {
-                    const components = componentsByPart.get(attachment.partIndex) ?? [];
-                    components.push(attachment.name);
-                    componentsByPart.set(attachment.partIndex, components);
-                }
-            } else {
-                const [legacyParts, compData, superType, subType, name, categoryType] = legacyShipDef;
-                this.superType = superType;
-                this.subType = subType;
-                this.name = name;
-                this.categoryType = categoryType;
-                partsData = legacyParts.map((partInfo: any[]) => ({
-                    name: partInfo[0],
-                    x: partInfo[1],
-                    y: partInfo[2],
-                    rotation: partInfo[3],
-                    isLoot: partInfo[4]
-                }));
-                this.maxHull = 0;
-                this.maxShell = 0;
-                this.weight = 0;
-                this.value = 0;
-
-                for (let partIndex = 0; partIndex < partsData.length; partIndex++) {
-                    if (compData && compData[partIndex] && compData[partIndex] !== 'none') {
-                        componentsByPart.set(partIndex, [compData[partIndex][0]]);
-                    }
-                }
-            }
-
-            if (this.superType === "Station" || this.superType === "Turret") {
-                this.immobile = true;
-            }
-
-            for (let i = 0; i < partsData.length; i++) {
-                const partInfo = partsData[i];
-                const part = {
-                    name: partInfo.name,
-                    x: partInfo.x * 5,
-                    y: partInfo.y * 5,
-                    rotation: partInfo.rotation,
-                    maxHull: partInfo.maxHull ?? 100
-                };
-
-                if (!blueprint) {
-                    this.maxShell += part.maxHull * 0.5;
-                    this.maxHull += part.maxHull * 0.25;
-                    this.weight += 10;
-                }
-                this.parts.push(part);
-
-                for (const compName of componentsByPart.get(i) ?? []) {
-                    const comp = new Component();
-                    comp.init(compName, this, part);
-                    this.components.push(comp);
-
-                    if (comp.type === "Weapon") this.compWeapon.push(comp);
-                    else if (comp.type === "Skill") this.compSkill.push(comp);
-                    else if (comp.type === "Spawn") this.compSpawn.push(comp);
-                    else if (comp.type === "Passive") this.compPassive.push(comp);
-                }
-            }
-
-            this.currentShell = this.maxShell;
-            this.currentHull = this.maxHull;
-            this.currentEnergy = this.maxEnergy;
+        const blueprint = this.game.shipManager?.getBlueprintForSourceKey(type);
+        const blueprintDefinition = blueprint?.shipDefinition;
+        if (blueprintDefinition && 'hullId' in blueprintDefinition) {
+            this.initCanonicalBlueprint(blueprintDefinition);
+        } else if (blueprintDefinition) {
+            this.initStructuredLegacyBlueprint(blueprintDefinition);
+        } else {
+            const legacyDefinition = this.game.shipData[type];
+            if (legacyDefinition) this.initLegacyTuple(legacyDefinition);
         }
 
-        // Setup Tractor for utility ships
+        if (this.superType === "Station" || this.superType === "Turret") {
+            this.immobile = true;
+        }
+
+        this.currentShell = this.maxShell;
+        this.currentHull = this.maxHull;
+        this.currentEnergy = this.maxEnergy;
+
         if (this.subType === "Player" || this.subType === "Harvester" || this.subType === "Worker") {
             this.tractor = new TractorEffect();
             this.tractor.ship = this;
@@ -169,21 +125,280 @@ export class Ship {
         }
     }
 
-    private applyBlueprint(blueprint: ShipBlueprintDefinition): void {
+    private initCanonicalBlueprint(blueprint: CanonicalShipBlueprintDefinition): void {
+        this.applyCanonicalBlueprint(blueprint);
+        const hull = this.game.hullDefinitions.get(blueprint.hullId);
+        if (!hull) throw new Error(`HullDefinition not found for "${blueprint.hullId}".`);
+
+        const loadout = this.game.shipLoadouts.get(blueprint.loadoutId);
+        if (!loadout) throw new Error(`ShipLoadout not found for "${blueprint.loadoutId}".`);
+
+        for (const part of hull.parts) {
+            this.parts.push({
+                id: part.id,
+                name: part.name,
+                x: part.position.x,
+                y: part.position.y,
+                rotation: part.rotationDeg,
+                isLoot: part.isLoot,
+                maxHull: part.maxHull ?? 100
+            });
+        }
+
+        const pointById = new Map<string, {
+            point: HullDefinition['weaponHardpoints'][number] |
+                HullDefinition['thrusterVents'][number] |
+                HullDefinition['utilitySockets'][number];
+            pointType: 'weapon' | 'vent' | 'utility';
+        }>();
+        for (const point of hull.weaponHardpoints) {
+            this.addCanonicalPoint(pointById, point, 'weapon', hull.id);
+        }
+        for (const point of hull.thrusterVents) {
+            this.addCanonicalPoint(pointById, point, 'vent', hull.id);
+        }
+        for (const point of hull.utilitySockets) {
+            this.addCanonicalPoint(pointById, point, 'utility', hull.id);
+        }
+
+        const reservedPoints = new Set<string>();
+        for (const [pointId, { point, pointType }] of pointById) {
+            const builtInComponentId = point.builtInComponentId;
+            if (!builtInComponentId) continue;
+
+            const component = this.requireCanonicalComponent(builtInComponentId);
+            this.validateCanonicalMount(component, point, pointType);
+            reservedPoints.add(pointId);
+            this.installCanonicalComponent(component, point, 'built-in', true);
+        }
+
+        const loadoutPoints = new Set<string>();
+        for (const installation of loadout.installations) {
+            const mountId = installation.mountId;
+            if (loadoutPoints.has(mountId)) {
+                throw new Error(`ShipLoadout "${loadout.id}" installs multiple components at "${mountId}".`);
+            }
+            loadoutPoints.add(mountId);
+            if (reservedPoints.has(mountId)) {
+                throw new Error(`ShipLoadout "${loadout.id}" replaces built-in component at "${mountId}".`);
+            }
+
+            const entry = pointById.get(mountId);
+            if (!entry) {
+                throw new Error(`Mount point "${mountId}" not found on hull "${hull.id}".`);
+            }
+            const component = this.requireCanonicalComponent(installation.componentId);
+            this.validateCanonicalMount(component, entry.point, entry.pointType);
+            this.installCanonicalComponent(component, entry.point, 'loadout', false);
+        }
+    }
+
+    private initStructuredLegacyBlueprint(blueprint: LegacyStructuredShipBlueprint): void {
+        this.applyLegacyBlueprint(blueprint);
+        for (const [partIndex, partDefinition] of blueprint.gameplay.parts.entries()) {
+            const part = {
+                name: partDefinition.name,
+                x: partDefinition.x * 5,
+                y: partDefinition.y * 5,
+                rotation: partDefinition.rotation,
+                isLoot: partDefinition.isLoot,
+                maxHull: partDefinition.maxHull ?? 100
+            };
+            this.parts.push(part);
+
+            for (const attachment of blueprint.gameplay.components) {
+                if (attachment.partIndex === partIndex) {
+                    this.addComponent(attachment.name, part, 'legacy');
+                }
+            }
+        }
+    }
+
+    private initLegacyTuple(definition: LegacyShipDefinition): void {
+        const [legacyParts, componentReferences, superType, subType, name, categoryType] = definition;
+        this.superType = superType;
+        this.subType = subType;
+        this.name = name;
+        this.categoryType = categoryType;
+        this.maxHull = 0;
+        this.maxShell = 0;
+        this.weight = 0;
+        this.value = 0;
+
+        for (const partInfo of legacyParts) {
+            const part = this.legacyPartRuntimeValues(partInfo);
+            this.parts.push(part);
+            this.maxShell += (part.maxHull ?? 100) * 0.5;
+            this.maxHull += (part.maxHull ?? 100) * 0.25;
+            this.weight += 10;
+        }
+
+        const compatibilityView = this.game.legacyCompatibilityViews?.get(this.type);
+        if (compatibilityView) {
+            for (const attachment of compatibilityView.legacyAttachments) {
+                const part = this.parts[attachment.partIndex];
+                if (part) this.addComponent(attachment.componentId, part, 'legacy');
+            }
+            return;
+        }
+
+        for (let partIndex = 0; partIndex < componentReferences.length; partIndex++) {
+            const componentId = this.legacyComponentId(componentReferences[partIndex]);
+            const part = this.parts[partIndex];
+            if (componentId && part) this.addComponent(componentId, part, 'legacy');
+        }
+    }
+
+    private legacyPartRuntimeValues(
+        part: LegacyShipDefinition[0][number]
+    ): { name: string; x: number; y: number; rotation: number; isLoot: boolean; maxHull: number } {
+        if (Array.isArray(part)) {
+            const [name, x, y, rotation, isLoot = false, maxHull = 100] = part;
+            return { name, x: x * 5, y: y * 5, rotation, isLoot, maxHull };
+        }
+        return {
+            name: part.name,
+            x: part.x * 5,
+            y: part.y * 5,
+            rotation: part.rotationDeg,
+            isLoot: part.isLoot ?? false,
+            maxHull: part.maxHull ?? 100
+        };
+    }
+
+    private legacyComponentId(reference: LegacyShipDefinition[1][number]): string | undefined {
+        if (typeof reference === 'string') {
+            return reference === 'none' ? undefined : reference;
+        }
+        if (Array.isArray(reference)) {
+            const [componentId] = reference;
+            return componentId && componentId !== 'none' ? componentId : undefined;
+        }
+        return undefined;
+    }
+
+    private addCanonicalPoint(
+        pointById: Map<string, {
+            point: HullDefinition['weaponHardpoints'][number] |
+                HullDefinition['thrusterVents'][number] |
+                HullDefinition['utilitySockets'][number];
+            pointType: 'weapon' | 'vent' | 'utility';
+        }>,
+        point: HullDefinition['weaponHardpoints'][number] |
+            HullDefinition['thrusterVents'][number] |
+            HullDefinition['utilitySockets'][number],
+        pointType: 'weapon' | 'vent' | 'utility',
+        hullId: string
+    ): void {
+        if (pointById.has(point.id)) {
+            throw new Error(`Hull "${hullId}" has duplicate mounting point ID "${point.id}".`);
+        }
+        pointById.set(point.id, { point, pointType });
+    }
+
+    private requireCanonicalComponent(
+        componentId: string
+    ): Exclude<ComponentDefinition, { kind: 'legacy' }> {
+        const component = this.game.componentDefinitions.get(componentId);
+        if (!component) {
+            throw new Error(`ComponentDefinition not found for "${componentId}".`);
+        }
+        if (component.kind === 'legacy') {
+            throw new Error(`Legacy component "${componentId}" cannot be installed by a canonical loadout.`);
+        }
+        return component;
+    }
+
+    private validateCanonicalMount(
+        component: Exclude<ComponentDefinition, { kind: 'legacy' }>,
+        point: HullDefinition['weaponHardpoints'][number] |
+            HullDefinition['thrusterVents'][number] |
+            HullDefinition['utilitySockets'][number],
+        pointType: 'weapon' | 'vent' | 'utility'
+    ): void {
+        if (component.kind === 'weapon') {
+            if (pointType !== 'weapon' || !('accepts' in point) || !point.accepts.includes(component.configuration)) {
+                throw new Error(`Weapon "${component.id}" is incompatible with mounting point "${point.id}".`);
+            }
+            return;
+        }
+
+        if (component.kind === 'propulsion') {
+            if (pointType !== 'vent' || !('acceptsPropulsionCategories' in point) ||
+                !point.acceptsPropulsionCategories.includes(component.category)) {
+                throw new Error(`Propulsion component "${component.id}" is incompatible with mounting point "${point.id}".`);
+            }
+            return;
+        }
+
+        if (pointType !== 'utility' || !('acceptedCategories' in point) ||
+            !point.acceptedCategories.includes(component.category)) {
+            throw new Error(`Utility component "${component.id}" is incompatible with mounting point "${point.id}".`);
+        }
+    }
+
+    private installCanonicalComponent(
+        definition: Exclude<ComponentDefinition, { kind: 'legacy' }>,
+        point: HullDefinition['weaponHardpoints'][number] |
+            HullDefinition['thrusterVents'][number] |
+            HullDefinition['utilitySockets'][number],
+        source: 'loadout' | 'built-in',
+        fixed: boolean
+    ): void {
+        const part = {
+            name: point.id,
+            x: point.position.x,
+            y: point.position.y,
+            rotation: point.rotationDeg
+        };
+        this.addComponent(definition, part, source, fixed);
+    }
+
+    private addComponent(
+        definitionOrId: ComponentDefinition | string,
+        part: any,
+        source: 'loadout' | 'built-in' | 'legacy',
+        fixed = false
+    ): void {
+        const component = new Component();
+        component.init(definitionOrId, this, part);
+        component.installationSource = source;
+        component.fixed = fixed;
+        this.components.push(component);
+
+        if (component.type === "Weapon") this.compWeapon.push(component);
+        else if (component.type === "Skill") this.compSkill.push(component);
+        else if (component.type === "Spawn") this.compSpawn.push(component);
+        else if (component.type === "Passive") this.compPassive.push(component);
+    }
+
+    private applyCanonicalBlueprint(blueprint: CanonicalShipBlueprintDefinition): void {
         this.superType = blueprint.superType;
         this.subType = blueprint.subType;
         this.name = blueprint.name;
         this.categoryType = blueprint.categoryType;
-        this.maxHull = blueprint.stats.maxHull;
-        this.maxShell = blueprint.stats.maxShell;
-        this.regenShell = blueprint.stats.regenShell;
-        this.maxEnergy = blueprint.stats.maxEnergy;
-        this.regenEnergy = blueprint.stats.regenEnergy ?? 20;
-        this.maxSpeed = blueprint.stats.maxSpeed;
-        this.acceleration = blueprint.stats.acceleration;
-        this.weight = blueprint.stats.weight;
-        this.radius = blueprint.stats.radius;
-        this.value = blueprint.stats.value;
+        this.applyStats(blueprint.stats);
+    }
+
+    private applyLegacyBlueprint(blueprint: LegacyStructuredShipBlueprint): void {
+        this.superType = blueprint.superType;
+        this.subType = blueprint.subType;
+        this.name = blueprint.name;
+        this.categoryType = blueprint.categoryType;
+        this.applyStats(blueprint.stats);
+    }
+
+    private applyStats(stats: CanonicalShipBlueprintDefinition['stats']): void {
+        this.maxHull = stats.maxHull;
+        this.maxShell = stats.maxShell;
+        this.regenShell = stats.regenShell;
+        this.maxEnergy = stats.maxEnergy;
+        this.regenEnergy = stats.regenEnergy ?? 20;
+        this.maxSpeed = stats.maxSpeed;
+        this.acceleration = stats.acceleration;
+        this.weight = stats.weight;
+        this.radius = stats.radius;
+        this.value = stats.value;
     }
 
     update() {

@@ -1,6 +1,6 @@
 import { Game } from '../core/Game';
 import { Ship } from '../entities/Ship';
-import { ShipBlueprint, ShipBlueprintDefinition } from './ShipBlueprint';
+import { ShipBlueprint, StructuredShipBlueprintDefinition } from './ShipBlueprint';
 import { FactionId } from './FactionManager';
 
 /**
@@ -36,12 +36,12 @@ export class ShipManager {
      * Register a blueprint. Accepts either an id + sourceKey pair or an
      * existing ShipBlueprint instance. Returns the registered blueprint.
      */
-    registerBlueprint(id: string, sourceKey: string, definition?: ShipBlueprintDefinition): ShipBlueprint;
+    registerBlueprint(id: string, sourceKey: string, definition?: StructuredShipBlueprintDefinition): ShipBlueprint;
     registerBlueprint(blueprint: ShipBlueprint): ShipBlueprint;
     registerBlueprint(
         blueprintOrId: string | ShipBlueprint,
         sourceKey?: string,
-        definition?: ShipBlueprintDefinition
+        definition?: StructuredShipBlueprintDefinition
     ): ShipBlueprint {
         let blueprint: ShipBlueprint;
         if (typeof blueprintOrId === 'string') {
@@ -60,7 +60,7 @@ export class ShipManager {
     registerBlueprintIfUnused(
         id: string,
         sourceKey: string,
-        definition: ShipBlueprintDefinition
+        definition: StructuredShipBlueprintDefinition
     ): ShipBlueprint {
         if (this.blueprints.has(id)) {
             throw new Error(`Ship blueprint ID "${id}" is already registered.`);

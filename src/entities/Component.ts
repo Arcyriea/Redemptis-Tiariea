@@ -3,6 +3,7 @@ import { Ship } from './Ship';
 import { Weapon } from '../weapons/Weapon';
 import { ManagedWeapon } from '../weapons/ManagedWeapon';
 import { Ability } from '../abilities/Ability';
+import type { ComponentDefinition, LegacyComponentDef, LegacyComponentTuple } from '../types/Shipmaker';
 
 /**
  * Component class - Represents modular modules equipped to ship parts.
@@ -27,6 +28,9 @@ export class Component {
     public cooldown: number = 0;    // seconds
     public energyCost: number = 0;
     public counter: number = 0;     // tick counter for cooldown
+    public turretAngleDeg: number = 0;
+    public installationSource: 'loadout' | 'built-in' | 'legacy' = 'legacy';
+    public fixed: boolean = false;
     private cooldownElapsedMs: number = 0;
     private activationPending: boolean = false;
 
@@ -43,59 +47,156 @@ export class Component {
 
     /**
      * Initializes the component based on game data definitions.
+     * Now supports typed ComponentDefinition and legacy compatibility.
      */
-    init(name: string, ship: Ship | null = null, part: any = null) {
-        this.subType = name;
+    init(
+        definitionOrName: ComponentDefinition | LegacyComponentDef | string,
+        ship: Ship | null = null,
+        part: any = null
+    ) {
         this.ship = ship;
         this.shipPart = part;
+        this.type = '';
+        this.subType = '';
+        this.name = '';
+        this.description = '';
+        this.value = 0;
         this.ready = true;
         this.counter = 0;
         this.cooldownElapsedMs = 0;
         this.activationPending = false;
+        this.turretAngleDeg = 0;
+        this.installationSource = 'legacy';
+        this.fixed = false;
         this.effect = null;
         this.ability = null;
 
-        // Load component definition from Game data registry
-        const compDef = this.game.componentData[name];
-        if (compDef) {
-            this.type = compDef[0] || "Passive";
-            this.subType = compDef[1] || name;
-            this.value = compDef[2] ?? 0;
-            this.name = name;
+        if (typeof definitionOrName === 'string') {
+            // Legacy fallback: lookup in registries
+            const def = this.game.componentDefinitions?.get(definitionOrName);
+            if (def) {
+                if (def.kind === 'legacy') {
+                    this.applyLegacyDef(def);
+                } else {
+                    this.applyDefinition(def);
+                }
+            } else {
+                // Absolute legacy fallback: raw tuple from Game.componentData
+                const tuple = this.game.componentData[definitionOrName];
+                if (tuple) {
+                    this.applyLegacyTuple(definitionOrName, tuple);
+                }
+            }
+        } else if (definitionOrName.kind === 'legacy') {
+            this.applyLegacyDef(definitionOrName);
+        } else {
+            this.applyDefinition(definitionOrName);
+        }
+    }
 
-            // Logic instantiation
-            if (this.type === "Weapon") {
-                // Prefer ManagedWeapon if projectile management is available
+    private applyDefinition(def: Exclude<ComponentDefinition, LegacyComponentDef>) {
+        this.name = def.id;
+        this.cooldown = def.operation.cooldown;
+        this.energyCost = def.operation.energyCost;
+
+        switch (def.kind) {
+            case 'weapon':
+                this.subType = def.id;
+                this.type = "Weapon";
                 this.effect = this.game.projectileManager
                     ? new ManagedWeapon(this.game.projectileManager)
                     : new Weapon();
-                this.effect.init(name, this);
-                this.cooldown = this.effect.cooldown;
-                this.energyCost = this.effect.energyCost;
-                this.description = typeof compDef[5] === "string" ? compDef[5] : "";
-            } else if (this.type === "Skill") {
-                this.cooldown = compDef[3] || 1.0;
-                this.energyCost = compDef[4] || 0;
-                this.description = compDef[5] || "";
+                this.effect.init(def, this);
+                break;
+            case 'propulsion':
+                this.subType = def.category;
+                this.type = "Passive";
+                break;
+            case 'utility':
+                this.subType = def.category;
+                this.type = "Passive";
+                break;
+        }
+    }
+
+    private applyLegacyDef(def: LegacyComponentDef) {
+        this.type = def.category || "Passive";
+        this.subType = def.subType || def.id;
+        this.name = def.id;
+        this.value = def.value ?? 0;
+        this.cooldown = def.cooldown || 1.0;
+        this.energyCost = def.category === 'Weapon'
+            ? def.energyCost || 5
+            : def.energyCost || 0;
+        this.description = def.description || "";
+
+        switch (def.category) {
+            case 'Weapon':
+                this.type = "Weapon";
+                this.effect = this.game.projectileManager
+                    ? new ManagedWeapon(this.game.projectileManager)
+                    : new Weapon();
+                this.effect.init(def, this);
+                break;
+            case 'Skill':
+                this.type = "Skill";
                 this.ability = new Ability();
-                this.ability.init(name, this);
+                this.ability.init(def.id, this);
                 if (this.ship) {
                     this.ability.ship = this.ship;
                     this.ability.shipComp = this;
                 }
-            } else if (this.type === "Spawn") {
-                this.cooldown = compDef[3] || 1.0;
-                this.energyCost = compDef[4] || 0;
-                this.description = compDef[5] || "";
-                // Spawn logic can be handled via Ability or custom Spawn class
+                break;
+            case 'Spawn':
+                this.type = "Spawn";
                 this.ability = new Ability();
-                this.ability.init(name, this);
+                this.ability.init(def.id, this);
                 this.ability.type = "Spawn";
-            } else {
-                this.cooldown = compDef[3] || 1.0;
-                this.energyCost = compDef[4] || 0;
-                this.description = compDef[5] || "";
+                break;
+            case 'Passive':
+                this.type = "Passive";
+                break;
+        }
+    }
+
+    private applyLegacyTuple(name: string, tuple: LegacyComponentTuple) {
+        const category = tuple[0] || "Passive";
+        const subType = tuple[1] || name;
+        this.name = name;
+        this.type = category;
+        this.subType = subType;
+
+        if (tuple[0] === "Weapon") {
+            this.value = tuple[2] ?? 0;
+            this.effect = this.game.projectileManager
+                ? new ManagedWeapon(this.game.projectileManager)
+                : new Weapon();
+            this.effect.init(name, this);
+            this.cooldown = this.effect.cooldown;
+            this.energyCost = this.effect.energyCost;
+            this.description = typeof tuple[5] === "string" ? tuple[5] : "";
+            return;
+        }
+
+        this.value = tuple[2] ?? 0;
+        this.cooldown = tuple[3] || 1.0;
+        this.energyCost = tuple[4] || 0;
+        this.description = typeof tuple[5] === "string" ? tuple[5] : "";
+        if (category === "Skill") {
+            this.type = "Skill";
+            this.ability = new Ability();
+            this.ability.init(name, this);
+            if (this.ship) {
+                this.ability.ship = this.ship;
+                this.ability.shipComp = this;
             }
+        } else if (category === "Spawn") {
+            this.type = "Spawn";
+            this.ability = new Ability();
+            this.ability.init(name, this);
+            this.ability.type = "Spawn";
+        } else {
+            this.type = "Passive";
         }
     }
 
