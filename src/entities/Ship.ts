@@ -148,8 +148,9 @@ export class Ship {
         const pointById = new Map<string, {
             point: HullDefinition['weaponHardpoints'][number] |
                 HullDefinition['thrusterVents'][number] |
-                HullDefinition['utilitySockets'][number];
-            pointType: 'weapon' | 'vent' | 'utility';
+                HullDefinition['utilitySockets'][number] |
+                HullDefinition['activeModuleMounts'][number];
+            pointType: 'weapon' | 'vent' | 'utility' | 'active-module';
         }>();
         for (const point of hull.weaponHardpoints) {
             this.addCanonicalPoint(pointById, point, 'weapon', hull.id);
@@ -159,6 +160,9 @@ export class Ship {
         }
         for (const point of hull.utilitySockets) {
             this.addCanonicalPoint(pointById, point, 'utility', hull.id);
+        }
+        for (const point of (hull.activeModuleMounts ?? [])) {
+            this.addCanonicalPoint(pointById, point, 'active-module', hull.id);
         }
 
         const reservedPoints = new Set<string>();
@@ -281,13 +285,15 @@ export class Ship {
         pointById: Map<string, {
             point: HullDefinition['weaponHardpoints'][number] |
                 HullDefinition['thrusterVents'][number] |
-                HullDefinition['utilitySockets'][number];
-            pointType: 'weapon' | 'vent' | 'utility';
+                HullDefinition['utilitySockets'][number] |
+                HullDefinition['activeModuleMounts'][number];
+            pointType: 'weapon' | 'vent' | 'utility' | 'active-module';
         }>,
         point: HullDefinition['weaponHardpoints'][number] |
             HullDefinition['thrusterVents'][number] |
-            HullDefinition['utilitySockets'][number],
-        pointType: 'weapon' | 'vent' | 'utility',
+            HullDefinition['utilitySockets'][number] |
+            HullDefinition['activeModuleMounts'][number],
+        pointType: 'weapon' | 'vent' | 'utility' | 'active-module',
         hullId: string
     ): void {
         if (pointById.has(point.id)) {
@@ -313,8 +319,9 @@ export class Ship {
         component: Exclude<ComponentDefinition, { kind: 'legacy' }>,
         point: HullDefinition['weaponHardpoints'][number] |
             HullDefinition['thrusterVents'][number] |
-            HullDefinition['utilitySockets'][number],
-        pointType: 'weapon' | 'vent' | 'utility'
+            HullDefinition['utilitySockets'][number] |
+            HullDefinition['activeModuleMounts'][number],
+        pointType: 'weapon' | 'vent' | 'utility' | 'active-module'
     ): void {
         if (component.kind === 'weapon') {
             if (pointType !== 'weapon' || !('accepts' in point) || !point.accepts.includes(component.configuration)) {
@@ -331,6 +338,14 @@ export class Ship {
             return;
         }
 
+        if (component.kind === 'active-module') {
+            if (pointType !== 'active-module' || !('acceptedCategories' in point) ||
+                !point.acceptedCategories.includes(component.category)) {
+                throw new Error(`Active Module "${component.id}" is incompatible with mounting point "${point.id}".`);
+            }
+            return;
+        }
+
         if (pointType !== 'utility' || !('acceptedCategories' in point) ||
             !point.acceptedCategories.includes(component.category)) {
             throw new Error(`Utility component "${component.id}" is incompatible with mounting point "${point.id}".`);
@@ -341,7 +356,8 @@ export class Ship {
         definition: Exclude<ComponentDefinition, { kind: 'legacy' }>,
         point: HullDefinition['weaponHardpoints'][number] |
             HullDefinition['thrusterVents'][number] |
-            HullDefinition['utilitySockets'][number],
+            HullDefinition['utilitySockets'][number] |
+            HullDefinition['activeModuleMounts'][number],
         source: 'loadout' | 'built-in',
         fixed: boolean
     ): void {

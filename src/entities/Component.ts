@@ -116,6 +116,10 @@ export class Component {
                 this.subType = def.category;
                 this.type = "Passive";
                 break;
+            case 'active-module':
+                this.subType = def.category;
+                this.type = "ActiveModule";
+                break;
         }
     }
 

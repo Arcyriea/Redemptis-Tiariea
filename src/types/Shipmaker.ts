@@ -1,10 +1,12 @@
 export type HullPartId = string & { readonly __hullPartId: unique symbol };
 export type HullPointId = string & { readonly __hullPointId: unique symbol };
+export type HullModificationId = string & { readonly __hullModificationId: unique symbol };
 export type ComponentId = string;
 export type SpriteKey = string;
 
 export const toHullPartId = (id: string): HullPartId => id as HullPartId;
 export const toHullPointId = (id: string): HullPointId => id as HullPointId;
+export const toHullModificationId = (id: string): HullModificationId => id as HullModificationId;
 
 export interface Point2 {
     x: number;
@@ -62,11 +64,21 @@ export interface UtilitySocket {
     builtInComponentId?: ComponentId;
 }
 
+export interface ActiveModuleMount {
+    id: HullPointId;
+    position: Point2;
+    rotationDeg: number;
+    acceptedCategories: readonly string[];
+    restrictions: Readonly<Record<string, unknown>>;
+    builtInComponentId?: ComponentId;
+}
+
 export interface HullDefinition {
     id: string;
     parts: readonly HullPart[];
     sprites: readonly SpriteLayer[];
     weaponHardpoints: readonly WeaponHardpoint[];
+    activeModuleMounts: readonly ActiveModuleMount[];
     thrusterVents: readonly ThrusterVent[];
     utilitySockets: readonly UtilitySocket[];
 }
@@ -155,6 +167,12 @@ export interface UtilityComponentDefinition extends BaseComponentDef {
     sprites: readonly SpriteLayer[];
 }
 
+export interface ActiveModuleDefinition extends BaseComponentDef {
+    kind: 'active-module';
+    category: string;
+    sprites: readonly SpriteLayer[];
+}
+
 export type LegacyComponentCategory = 'Weapon' | 'Skill' | 'Spawn' | 'Passive';
 
 export interface LegacyWeaponValues {
@@ -182,6 +200,7 @@ export type ComponentDefinition =
     | TurretWeaponDefinition
     | PropulsionComponentDefinition
     | UtilityComponentDefinition
+    | ActiveModuleDefinition
     | LegacyComponentDef;
 
 export interface LegacyShipPartTuple {
@@ -232,6 +251,33 @@ export type LegacyComponentTuple =
         description?: string,
         ...extra: Array<string | number>
     ];
+
+export interface HullModificationDefinition {
+    id: HullModificationId;
+    name: string;
+    description: string;
+    effects: Readonly<Record<string, number>>;
+}
+
+export interface ProductionQueue {
+    currentTaskId: string | null;
+    progress: number;
+    startTime: number;
+    estimatedDuration: number;
+}
+
+export interface ProductionFacilityInstance {
+    id: string;
+    definitionId: string;
+    queue: ProductionQueue;
+}
+
+export interface ProductionFacilityDefinition {
+    id: string;
+    name: string;
+    capabilities: readonly string[];
+    baseProductionRate: number;
+}
 
 export interface LegacyComponentAttachment {
     partIndex: number;

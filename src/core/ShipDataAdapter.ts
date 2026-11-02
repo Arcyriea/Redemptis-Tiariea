@@ -51,6 +51,7 @@ export class ShipDataAdapter {
                 parts,
                 sprites: [],
                 weaponHardpoints: [],
+                activeModuleMounts: [],
                 thrusterVents: [],
                 utilitySockets: []
             };
@@ -88,20 +89,15 @@ export class ShipDataAdapter {
                         }
                     ];
                 } else {
-                    const category = definition.kind === 'legacy' ? definition.category : definition.kind;
-                    hull.utilitySockets = [
-                        ...hull.utilitySockets,
-                        {
-                            id: mountId,
-                            position: part.position,
-                            rotationDeg: part.rotationDeg,
-                            acceptedCategories: [category],
-                            restrictions: {}
-                        }
-                    ];
+                    // Individual classification:
+                    // Only explicitly verified legacy components are migrated to canonical mounts.
+                    // Everything else is handled via the LegacyCompatibilityView.
+                    // Currently, no non-weapon components are verified for canonical migration.
                 }
 
-                installations.push({ mountId, componentId });
+                if (definition.kind !== 'legacy') {
+                    installations.push({ mountId, componentId });
+                }
                 legacyAttachments.push({ partIndex, mountId, componentId });
             }
 

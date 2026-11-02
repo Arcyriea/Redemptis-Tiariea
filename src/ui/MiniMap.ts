@@ -11,10 +11,17 @@ export const MINIMAP_SHIP_ICON_ASSETS = {
 const DEFAULT_MINIMAP_SHIP_ICON = MINIMAP_SHIP_ICON_ASSETS.capitalShip.key;
 const MINIMAP_ICON_BY_SHIP_TYPE: Readonly<Partial<Record<string, string>>> = {};
 const MINIMAP_ICON_TINTS = {
-    Neutral: 0xaaaaaa,
-    Enemy: 0xff0000,
-    Ally: 0x00ff00,
-    Player: 0x00ffff
+    Interlocutor: 0xaaaaaa, //Neutral leader
+    Neutral: 0x808080, //Neutral units
+
+    Warlord: 0xff8000, //Hostile leader
+    Enemy: 0xff0000, //Hostile units
+
+    Marshal: 0x00ff80, //Friendly leader
+    Ally: 0x00ff00, //Friendly units
+    
+    Player: 0x00ffff, //As main character
+    Party: 0x0080ff //Player's units
 } as const;
 const MINIMAP_SHIP_ICON_BASE_SIZE = 18;
 
