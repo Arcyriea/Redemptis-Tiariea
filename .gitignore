@@ -24,4 +24,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-"scripts/backups/svg-copyright/" 
+scripts/backups/svg-copyright/*
