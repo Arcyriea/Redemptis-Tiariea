@@ -1,4 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650">
+  <metadata>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <rdf:Description rdf:about="">
+        <dc:contributor>Arcyriea (Head Director)</dc:contributor>
+        <dc:rights>Copyright (c) 2026 Redemptis-Tiariea. All rights reserved. Unauthorized reproduction, redistribution, modification, or commercial use requires prior written permission from the respective rights holders.</dc:rights>
+        <dc:description>Redemptis-Tiariea project asset attribution.</dc:description>
+        </rdf:Description>
+    </rdf:RDF>
+  </metadata>
 <defs>
  <linearGradient id="hull" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b8f0e8" /><stop offset="1" stop-color="#4ab8c4" /></linearGradient>
  <linearGradient id="panel" x1="0" y1="0" x2="0.9" y2="1"><stop stop-color="#d8fbf3" /><stop offset="1" stop-color="#83d9d5" /></linearGradient>

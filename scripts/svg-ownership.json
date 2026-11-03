@@ -1,0 +1,43 @@
+{
+  "assets": {
+    "public/favicon.svg": "PROJECT_OWNED",
+    "public/icons.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/01_side_hull_angular.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/02_hex_cockpit.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/03_side_wing.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/04_rear_engine_pod.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/05_nose_section.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/06_swept_wing.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/07_connector_module.svg": "PROJECT_OWNED",
+    "public/assets/Components/Aistiaria/08_tail_fuselage.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 1.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 2.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 3.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 4.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 5.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 6.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 7.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 8.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 9.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Part 10.svg": "PROJECT_OWNED",
+    "public/assets/Components/Yutiarin/Wing 1.svg": "PROJECT_OWNED",
+    "public/assets/Ships/alien-interceptor.svg": "PROJECT_OWNED",
+    "public/assets/Ships/alien-leviathan.svg": "PROJECT_OWNED",
+    "public/assets/Ships/alien-mothership.svg": "PROJECT_OWNED",
+    "public/assets/Ships/curved-corvette.svg": "PROJECT_OWNED",
+    "public/assets/Ships/faceted-cruiser.svg": "PROJECT_OWNED",
+    "public/assets/Ships/human-dreadnought.svg": "PROJECT_OWNED",
+    "public/assets/Ships/human-frigate.svg": "PROJECT_OWNED",
+    "public/assets/Ships/void-dreadnought.svg": "PROJECT_OWNED",
+    "public/assets/Ships/Yutiarin Kinetic Lance Frigate.svg": "PROJECT_OWNED",
+    "public/assets/Ships/yutiarin-starblade-destroyer.svg": "PROJECT_OWNED",
+    "public/assets/Turrets-Platforms/Yutiarin-Defense Turret.svg": "PROJECT_OWNED",
+    "public/assets/Turrets-Platforms/Yutiarin-Perimeter Turret.svg": "PROJECT_OWNED",
+    "public/minimap/Capital-Ship.svg": "PROJECT_OWNED",
+    "public/minimap/Corvette.svg": "PROJECT_OWNED",
+    "public/minimap/Fighter.svg": "PROJECT_OWNED"
+  },
+  "defaults": {
+    "fallback": "UNKNOWN"
+  }
+}

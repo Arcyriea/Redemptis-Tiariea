@@ -1,0 +1,59 @@
+<svg id="battleship-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" class="w-full h-full drop-shadow-2xl">
+                    <defs>
+                        <linearGradient id="aur-hull1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#451a03"></stop>
+                            <stop offset="50%" stop-color="#1c1917"></stop>
+                            <stop offset="100%" stop-color="#0c0a09"></stop>
+                        </linearGradient>
+                        <linearGradient id="aur-hull2" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#78350f"></stop>
+                            <stop offset="100%" stop-color="#27272a"></stop>
+                        </linearGradient>
+                        <linearGradient id="aur-fire" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#fbbf24"></stop>
+                            <stop offset="50%" stop-color="#f59e0b"></stop>
+                            <stop offset="100%" stop-color="#dc2626"></stop>
+                        </linearGradient>
+                        <filter id="amber-glow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+                            <feComposite in="SourceGraphic" in2="blur" operator="over"></feComposite>
+                        </filter>
+                    </defs>
+
+                    <!-- Thruster Glow -->
+                    <g class="layer-cores" style="display: block;">
+                        <path d="M 140 270 Q 40 280 10 300 Q 40 320 140 330 Z" fill="url(#aur-fire)" filter="url(#amber-glow)" opacity="0.9" data-filter-active="true"></path>
+                    </g>
+
+                    <!-- Aerodynamic Curved Hull -->
+                    <g class="layer-base" stroke="#f59e0b" stroke-width="1.5" stroke-linejoin="round">
+                        <!-- Sleek Tear-drop Body -->
+                        <path d="M 140 300 C 200 180, 450 120, 920 300 C 450 480, 200 420, 140 300 Z" fill="url(#aur-hull1)"></path>
+                        
+                        <!-- Swept Wing Loops -->
+                        <path d="M 280 230 Q 420 100 600 130 Q 500 230 380 250 Z" fill="url(#aur-hull2)"></path>
+                        <path d="M 280 370 Q 420 500 600 470 Q 500 370 380 350 Z" fill="url(#aur-hull2)"></path>
+                    </g>
+
+                    <!-- Layer Panels -->
+                    <g class="layer-panels" fill="none" stroke="#fbbf24" stroke-width="1.2" style="display: block;">
+                        <!-- Fluid Body Contour Lines -->
+                        <path d="M 220 300 C 320 220, 550 200, 780 300" stroke-dasharray="6 3"></path>
+                        <path d="M 220 300 C 320 380, 550 400, 780 300" stroke-dasharray="6 3"></path>
+                        
+                        <!-- Cockpit Shield Dome -->
+                        <path d="M 620 280 Q 720 280 780 300 Q 720 320 620 320 Z" fill="#27272a" stroke="#f59e0b" stroke-width="1.5"></path>
+                    </g>
+
+                    <!-- Cores and Energy Rings -->
+                    <g class="layer-cores" style="display: block;">
+                        <circle cx="450" cy="300" r="30" fill="url(#aur-fire)" filter="url(#amber-glow)" data-filter-active="true"></circle>
+                        <circle cx="450" cy="300" r="42" fill="none" stroke="#fbbf24" stroke-width="2" filter="url(#amber-glow)" data-filter-active="true"></circle>
+                    </g>
+
+                    <!-- Weapon Accents -->
+                    <g class="layer-accents" stroke="#fef08a" stroke-width="1.5" style="display: block;">
+                        <line x1="920" y1="300" x2="970" y2="300" stroke="#f59e0b" stroke-width="3" filter="url(#amber-glow)" data-filter-active="true"></line>
+                        <circle cx="720" cy="300" r="3" fill="#fef08a" filter="url(#amber-glow)" data-filter-active="true"></circle>
+                    </g>
+                </svg>

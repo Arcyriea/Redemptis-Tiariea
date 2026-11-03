@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650">
+<defs>
+ <linearGradient id="hull" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b8f0e8" /><stop offset="1" stop-color="#4ab8c4" /></linearGradient>
+ <linearGradient id="panel" x1="0" y1="0" x2="0.9" y2="1"><stop stop-color="#d8fbf3" /><stop offset="1" stop-color="#83d9d5" /></linearGradient>
+</defs>
+<g stroke="#172b62" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+ <path d="M95 282 Q102 204 163 160 L285 80 Q310 63 343 63 L545 63 Q568 63 580 87 L612 151 Q629 180 614 211 L591 259 Q583 280 601 297 L661 344 Q681 360 662 379 Q647 395 621 408 L538 451 Q510 466 510 497 L510 594 L328 594 Q326 490 283 433 Q253 393 207 391 L108 388 Q86 387 88 365 Q88 316 95 282Z" fill="url(#hull)" />
+ <path d="M178 185 L293 108 Q314 95 345 95 L470 95 L437 160 L307 174 L210 241 Q181 262 173 306 L133 330 Q136 245 178 185Z" fill="url(#panel)" stroke-width="3" />
+ <path d="M350 209 L546 193 L565 225 L548 265 L574 295 L520 326 L392 305Z" fill="#79d5d4" stroke-width="3" />
+ <path d="M352 209 L392 305 L520 326" fill="none" stroke-width="3" />
+ <path d="M285 423 Q319 461 319 536 L319 594" fill="none" stroke-width="3" />
+ <path d="M550 452 L622 414 L656 383" fill="none" stroke-width="3" />
+</g></svg>

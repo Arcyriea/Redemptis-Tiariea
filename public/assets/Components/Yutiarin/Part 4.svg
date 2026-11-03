@@ -1,4 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 270">
+  <metadata>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <rdf:Description rdf:about="">
+        <dc:contributor>Arcyriea (Head Director)</dc:contributor>
+        <dc:rights>Copyright (c) 2026 Redemptis-Tiariea. All rights reserved. Unauthorized reproduction, redistribution, modification, or commercial use requires prior written permission from the respective rights holders.</dc:rights>
+        <dc:description>Redemptis-Tiariea project asset attribution.</dc:description>
+        </rdf:Description>
+    </rdf:RDF>
+  </metadata>
 <defs><linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e2ffff" /><stop offset="1" stop-color="#42a9d0" /></linearGradient></defs>
 <g stroke="#172b62" stroke-width="5" stroke-linejoin="round">
  <path d="M73 18 L190 18 Q201 18 207 31 L260 112 L226 218 Q221 235 204 235 L78 235 Q64 235 60 221 L25 122 L58 34 Q62 18 73 18Z" fill="url(#glass)" />

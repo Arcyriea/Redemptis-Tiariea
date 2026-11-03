@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Generator: visioncortex VTracer 1.0.0-alpha.3 -->
 <svg stroke-width="4" stroke-linejoin="round" viewBox="0 0 104 101" version="1.1" xmlns="http://www.w3.org/2000/svg" width="104" height="404">
+  <metadata>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <rdf:Description rdf:about="">
+        <dc:contributor>Arcyriea (Head Director)</dc:contributor>
+        <dc:rights>Copyright (c) 2026 Redemptis-Tiariea. All rights reserved. Unauthorized reproduction, redistribution, modification, or commercial use requires prior written permission from the respective rights holders.</dc:rights>
+        <dc:description>Redemptis-Tiariea project asset attribution.</dc:description>
+        </rdf:Description>
+    </rdf:RDF>
+  </metadata>
 <path d="M53,6l0-2L51,4l0,2L50,6l0,2L49,8l0,1l1,0l0,1l1,0l0,1l2,0l0-1l1,0l0-1l1,0l0-1L54,8l0-2L53,6ZM51,6l2,0l0,2l1,0l0,1L53,9l0,1l-2,0l0-1L50,9l0-1l1,0l0-2Z" fill="#80FFA6" stroke="#80FFA6"/>
 <path d="M53,6L51,6l0,2L50,8l0,1l1,0l0,1l2,0l0-1l1,0l0-1L53,8l0-2Z" fill="#1E1D22" stroke="#1E1D22"/>
 <path d="M53,16l0-2l-2,0l0,2l-1,0l0,4l-1,0l0,4l-1,0l0,4l1,0l0,1l-1,0l0,2l-1,0l0,2l1,0l0,1l1,0l0,1l6,0l0-1l1,0l0-1l1,0l0-2l-1,0l0-2l-1,0l0-1l1,0l0-4l-1,0l0-4l-1,0l0-4l-1,0Zm-2,0l2,0l0,4l1,0l0,4l1,0l0,4l-1,0l0,1l1,0l0,2l1,0l0,2l-1,0l0,1l-6,0l0-1l-1,0l0-2l1,0l0-2l1,0l0-1l-1,0l0-4l1,0l0-4l1,0l0-4Z" fill="#80FFBF" stroke="#80FFBF"/>

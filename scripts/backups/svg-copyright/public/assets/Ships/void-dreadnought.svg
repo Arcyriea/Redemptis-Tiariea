@@ -1,0 +1,83 @@
+<svg id="battleship-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" class="w-full h-full drop-shadow-2xl">
+                    <defs>
+                        <!-- Gradients -->
+                        <linearGradient id="ecl-hull-primary" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#1e293b"></stop>
+                            <stop offset="50%" stop-color="#0f172a"></stop>
+                            <stop offset="100%" stop-color="#020617"></stop>
+                        </linearGradient>
+                        <linearGradient id="ecl-hull-secondary" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#334155"></stop>
+                            <stop offset="50%" stop-color="#1e293b"></stop>
+                            <stop offset="100%" stop-color="#0f172a"></stop>
+                        </linearGradient>
+                        <linearGradient id="ecl-plasma" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#22d3ee"></stop>
+                            <stop offset="50%" stop-color="#06b6d4"></stop>
+                            <stop offset="100%" stop-color="#3b82f6"></stop>
+                        </linearGradient>
+                        <linearGradient id="ecl-glow" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#67e8f9" stop-opacity="0.9"></stop>
+                            <stop offset="100%" stop-color="#0284c7" stop-opacity="0.2"></stop>
+                        </linearGradient>
+                        <!-- Glow Filter -->
+                        <filter id="cyan-glow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="6" result="blur"></feGaussianBlur>
+                            <feComposite in="SourceGraphic" in2="blur" operator="over"></feComposite>
+                        </filter>
+                    </defs>
+
+                    <!-- Background Engine Thruster Plumes -->
+                    <g class="layer-cores" style="display: block;">
+                        <!-- Main Engine Glow -->
+                        <path d="M 120 280 C 40 280, 10 295, 0 300 C 10 305, 40 320, 120 320 Z" fill="url(#ecl-plasma)" filter="url(#cyan-glow)" opacity="0.85" data-filter-active="true"></path>
+                        <path d="M 190 210 C 120 205, 70 210, 30 215 C 70 220, 120 225, 190 220 Z" fill="url(#ecl-plasma)" filter="url(#cyan-glow)" opacity="0.7" data-filter-active="true"></path>
+                        <path d="M 190 380 C 120 375, 70 380, 30 385 C 70 390, 120 395, 190 390 Z" fill="url(#ecl-plasma)" filter="url(#cyan-glow)" opacity="0.7" data-filter-active="true"></path>
+                    </g>
+
+                    <!-- Main Hull Base -->
+                    <g class="layer-base" stroke="#0891b2" stroke-width="1.5" stroke-linejoin="round">
+                        <!-- Upper Wing Curve -->
+                        <path d="M 180 300 C 220 200, 350 120, 520 100 C 680 80, 800 190, 920 300 C 800 410, 680 520, 520 500 C 350 480, 220 400, 180 300 Z" fill="url(#ecl-hull-primary)"></path>
+                        
+                        <!-- Outer Swept Fins (Top & Bottom) -->
+                        <path d="M 320 145 C 420 60, 580 40, 680 80 C 560 120, 420 150, 320 145 Z" fill="url(#ecl-hull-secondary)"></path>
+                        <path d="M 320 455 C 420 540, 580 560, 680 520 C 560 480, 420 450, 320 455 Z" fill="url(#ecl-hull-secondary)"></path>
+                    </g>
+
+                    <!-- Paneling Overlay -->
+                    <g class="layer-panels" fill="url(#ecl-hull-secondary)" stroke="#0284c7" stroke-width="1" style="display: block;">
+                        <!-- Curved Armor Plates -->
+                        <path d="M 360 250 C 440 180, 580 170, 720 260 C 650 220, 500 210, 360 250 Z"></path>
+                        <path d="M 360 350 C 440 420, 580 430, 720 340 C 650 380, 500 390, 360 350 Z"></path>
+                        <!-- Forward Cockpit Pod -->
+                        <path d="M 680 280 C 750 280, 840 295, 880 300 C 840 305, 750 320, 680 320 C 650 310, 650 290, 680 280 Z" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"></path>
+                    </g>
+
+                    <!-- Energy Veins & Core Glow -->
+                    <g class="layer-cores" style="display: block;">
+                        <!-- Center Core Crystal -->
+                        <ellipse cx="480" cy="300" rx="65" ry="22" fill="url(#ecl-plasma)" filter="url(#cyan-glow)" data-filter-active="true"></ellipse>
+                        
+                        <!-- Luminous Flow Channels -->
+                        <path d="M 240 300 Q 380 280 415 300 T 680 300" fill="none" stroke="#67e8f9" stroke-width="3" filter="url(#cyan-glow)" data-filter-active="true"></path>
+                        <path d="M 480 300 Q 560 220 660 180" fill="none" stroke="#22d3ee" stroke-width="2" filter="url(#cyan-glow)" data-filter-active="true"></path>
+                        <path d="M 480 300 Q 560 380 660 420" fill="none" stroke="#22d3ee" stroke-width="2" filter="url(#cyan-glow)" data-filter-active="true"></path>
+                    </g>
+
+                    <!-- Detailed Accents & Weapons -->
+                    <g class="layer-accents" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" style="display: block;">
+                        <!-- Front Cannon Arrays -->
+                        <line x1="880" y1="295" x2="950" y2="295" filter="url(#cyan-glow)" data-filter-active="true"></line>
+                        <line x1="880" y1="305" x2="950" y2="305" filter="url(#cyan-glow)" data-filter-active="true"></line>
+                        
+                        <!-- Panel Seams and Highlights -->
+                        <path d="M 280 240 C 350 220, 420 215, 500 220" fill="none" stroke="#0284c7" stroke-dasharray="8 4"></path>
+                        <path d="M 280 360 C 350 380, 420 385, 500 380" fill="none" stroke="#0284c7" stroke-dasharray="8 4"></path>
+                        
+                        <!-- Bridge Sensor Nodes -->
+                        <circle cx="710" cy="300" r="3" fill="#a5f3fc" filter="url(#cyan-glow)" data-filter-active="true"></circle>
+                        <circle cx="670" cy="288" r="2" fill="#a5f3fc"></circle>
+                        <circle cx="670" cy="312" r="2" fill="#a5f3fc"></circle>
+                    </g>
+                </svg>

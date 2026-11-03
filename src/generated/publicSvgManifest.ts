@@ -104,6 +104,11 @@ export const publicSvgTextures: readonly PublicSvgTexture[] =
         "aliases": []
     },
     {
+        "key": "public-ships-yutiarin-kinetic-lance-frigate",
+        "url": "/assets/Ships/Yutiarin%20Kinetic%20Lance%20Frigate.svg",
+        "aliases": []
+    },
+    {
         "key": "public-ships-alien-interceptor",
         "url": "/assets/Ships/alien-interceptor.svg",
         "aliases": [

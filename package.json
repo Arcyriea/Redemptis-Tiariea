@@ -9,10 +9,12 @@
     "prebuild": "node scripts/generate-public-svg-manifest.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx --test"
+    "test": "tsx --test",
+    "copyright:svg": "node scripts/add-svg-copyright.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "saxes": "^6.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"

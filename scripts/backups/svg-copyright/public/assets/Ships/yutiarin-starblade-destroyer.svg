@@ -1,0 +1,852 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 1200 600"
+   width="100%"
+   height="100%"
+   version="1.1"
+   id="svg103"
+   sodipodi:docname="gemini-svg.svg"
+   inkscape:version="1.3 (0e150ed6c4, 2023-07-21)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview103"
+     pagecolor="#ffffff"
+     bordercolor="#999999"
+     borderopacity="1"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.0233333"
+     inkscape:cx="616.61238"
+     inkscape:cy="323.94137"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg103" />
+  <defs
+     id="defs26">
+    <linearGradient
+       id="linearGradient105"
+       x1="100%"
+       y1="0%"
+       x2="0%"
+       y2="0%">
+      <stop
+         offset="0%"
+         stop-color="#00ffff"
+         stop-opacity="0"
+         id="stop103" />
+      <stop
+         offset="100%"
+         stop-color="#ffffff"
+         stop-opacity="0.95"
+         id="stop105" />
+    </linearGradient>
+    <!-- Background Space Gradient -->
+    <radialGradient
+       id="spaceGlow"
+       cx="50%"
+       cy="50%"
+       r="50%">
+      <stop
+         offset="0%"
+         stop-color="#0c1d33"
+         id="stop1" />
+      <stop
+         offset="100%"
+         stop-color="#050a14"
+         id="stop2" />
+    </radialGradient>
+    <!-- Core & Plasma Glow Filters -->
+    <filter
+       id="glow-cyan"
+       y="-5.62"
+       height="12.24"
+       width="inf"
+       x="-inf">
+      <feGaussianBlur
+         stdDeviation="8"
+         result="blur1"
+         id="feGaussianBlur2" />
+      <feGaussianBlur
+         stdDeviation="15"
+         result="blur2"
+         id="feGaussianBlur3" />
+      <feMerge
+         id="feMerge5">
+        <feMergeNode
+           in="blur2"
+           id="feMergeNode3" />
+        <feMergeNode
+           in="blur1"
+           id="feMergeNode4" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode5" />
+      </feMerge>
+    </filter>
+    <filter
+       id="glow-core"
+       x="-0.97608696"
+       y="-0.97608696"
+       width="2.9521739"
+       height="2.9521739">
+      <feGaussianBlur
+         stdDeviation="12"
+         result="blur1"
+         id="feGaussianBlur5" />
+      <feGaussianBlur
+         stdDeviation="25"
+         result="blur2"
+         id="feGaussianBlur6" />
+      <feMerge
+         id="feMerge8">
+        <feMergeNode
+           in="blur2"
+           id="feMergeNode6" />
+        <feMergeNode
+           in="blur1"
+           id="feMergeNode7" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode8" />
+      </feMerge>
+    </filter>
+    <!-- Linear Gradients for Metallic Hull Panels -->
+    <linearGradient
+       id="hullLight"
+       x1="0%"
+       y1="0%"
+       x2="0%"
+       y2="100%">
+      <stop
+         offset="0%"
+         stop-color="#e2ffff"
+         id="stop8" />
+      <stop
+         offset="50%"
+         stop-color="#b8f0e8"
+         id="stop9" />
+      <stop
+         offset="100%"
+         stop-color="#8fdad3"
+         id="stop10" />
+    </linearGradient>
+    <linearGradient
+       id="hullMid"
+       x1="0%"
+       y1="0%"
+       x2="0%"
+       y2="100%">
+      <stop
+         offset="0%"
+         stop-color="#7bd3ce"
+         id="stop11" />
+      <stop
+         offset="50%"
+         stop-color="#4ab8c4"
+         id="stop12" />
+      <stop
+         offset="100%"
+         stop-color="#328a98"
+         id="stop13" />
+    </linearGradient>
+    <linearGradient
+       id="hullDark"
+       x1="0%"
+       y1="0%"
+       x2="0%"
+       y2="100%">
+      <stop
+         offset="0%"
+         stop-color="#2a6d7c"
+         id="stop14" />
+      <stop
+         offset="100%"
+         stop-color="#183e4a"
+         id="stop15" />
+    </linearGradient>
+    <linearGradient
+       id="goldTrim"
+       x1="0%"
+       y1="0%"
+       x2="0%"
+       y2="100%">
+      <stop
+         offset="0%"
+         stop-color="#f3e8ab"
+         id="stop16" />
+      <stop
+         offset="50%"
+         stop-color="#cbb561"
+         id="stop17" />
+      <stop
+         offset="100%"
+         stop-color="#8d7a31"
+         id="stop18" />
+    </linearGradient>
+    <!-- Thruster Glow Gradients -->
+    <linearGradient
+       id="engineExhaust"
+       x1="100%"
+       y1="0%"
+       x2="0%"
+       y2="0%"
+       xlink:href="#linearGradient105">
+      <stop
+         offset="0%"
+         stop-color="#00ffff"
+         stop-opacity="0"
+         id="stop19" />
+      <stop
+         offset="50%"
+         stop-color="#5bfbf1"
+         stop-opacity="0.6"
+         id="stop20" />
+      <stop
+         offset="100%"
+         stop-color="#ffffff"
+         stop-opacity="0.95"
+         id="stop21" />
+    </linearGradient>
+    <!-- Radial Gradients for Energy Core -->
+    <radialGradient
+       id="coreEnergy"
+       cx="50%"
+       cy="50%"
+       r="50%">
+      <stop
+         offset="0%"
+         stop-color="#ffffff"
+         id="stop22" />
+      <stop
+         offset="25%"
+         stop-color="#8efff5"
+         id="stop23" />
+      <stop
+         offset="60%"
+         stop-color="#26cca8"
+         id="stop24" />
+      <stop
+         offset="90%"
+         stop-color="#0d6d62"
+         id="stop25" />
+      <stop
+         offset="100%"
+         stop-color="#083832"
+         id="stop26" />
+    </radialGradient>
+    <linearGradient
+       id="hullMid-0"
+       x1="338.68356"
+       y1="667.43908"
+       x2="338.68356"
+       y2="907.55713"
+       gradientTransform="matrix(1.9591088,0,0,-0.51043618,1.4989727,600.39233)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#7bd3ce"
+         id="stop11-9" />
+      <stop
+         offset="50%"
+         stop-color="#4ab8c4"
+         id="stop12-9" />
+      <stop
+         offset="100%"
+         stop-color="#328a98"
+         id="stop13-0" />
+    </linearGradient>
+    <linearGradient
+       id="hullLight-3"
+       x1="127.16868"
+       y1="1324.8953"
+       x2="127.16868"
+       y2="1475.0363"
+       gradientTransform="matrix(4.0890571,0,0,-0.24455516,1.4989727,600.39233)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#e2ffff"
+         id="stop8-3" />
+      <stop
+         offset="50%"
+         stop-color="#b8f0e8"
+         id="stop9-8" />
+      <stop
+         offset="100%"
+         stop-color="#8fdad3"
+         id="stop10-3" />
+    </linearGradient>
+    <filter
+       id="glow-cyan-1"
+       y="-2.0888462"
+       height="5.1703254"
+       width="1.2007081"
+       x="-0.099650627">
+      <feGaussianBlur
+         stdDeviation="8"
+         result="blur1"
+         id="feGaussianBlur2-0" />
+      <feGaussianBlur
+         stdDeviation="15"
+         result="blur2"
+         id="feGaussianBlur3-8" />
+      <feMerge
+         id="feMerge5-7">
+        <feMergeNode
+           in="blur2"
+           id="feMergeNode3-4" />
+        <feMergeNode
+           in="blur1"
+           id="feMergeNode4-2" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode5-8" />
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Background Canvas -->
+  <!-- Blueprint Grid Overlay -->
+  <!-- SHIP MASTER CONTAINER (Horizontal Alignment: Rear on Left, Front/Prongs on Right) -->
+  <path
+     d="m 521.49897,250.39233 230,-10.00001 c 110,-5 221.13283,17.50001 383.93533,14.78961 -147.96561,40.75548 -283.93533,10.2104 -403.93533,10.2104 h -200 z"
+     fill="url(#hullLight)"
+     id="path68-5"
+     sodipodi:nodetypes="cccscc"
+     style="fill:url(#hullLight-3);stroke-width:3;stroke-dasharray:none;stroke:#173355;stroke-opacity:1" />
+  <path
+     d="m 665.01689,137.14232 h 147.98208 c 121.49837,0 202.72303,118.03961 322.43533,118.03961 -191.72047,11.44287 -283.93533,-2.7896 -393.93533,0.2104 z"
+     fill="url(#hullMid)"
+     id="path69-7"
+     sodipodi:nodetypes="ccccc"
+     style="fill:url(#hullMid-0);stroke:#163152;stroke-opacity:1;stroke-width:3;stroke-dasharray:none" />
+  <path
+     d="m 524,168.43794 h 170 c 120,0 253.9353,-44.7896 383.9353,10.2104"
+     fill="none"
+     stroke="#5bfbf1"
+     stroke-width="4"
+     filter="url(#glow-cyan)"
+     id="path71-9"
+     sodipodi:nodetypes="csc"
+     style="filter:url(#glow-cyan-1)"
+     transform="matrix(1,0,0,-1,57.498973,433.83027)" />
+  <g
+     id="tiareian-dreadnought">
+    <!-- 1. ENGINE EXHAUST PLUMES -->
+    <g
+       filter="url(#glow-core)"
+       id="g30" />
+    <!-- 2. REAR HULL & THRUSTER NOZZLES -->
+    <g
+       stroke="#132448"
+       stroke-width="3"
+       stroke-linejoin="round"
+       stroke-linecap="round"
+       id="g38">
+      <!-- Upper Thruster Assembly -->
+      <path
+         d="M 170,225 L 230,225 L 245,242 L 180,258 L 170,250 Z"
+         fill="url(#hullDark)"
+         id="path30" />
+      <rect
+         x="155"
+         y="228"
+         width="20"
+         height="24"
+         rx="3"
+         fill="url(#hullMid)"
+         id="rect30" />
+      <!-- Lower Thruster Assembly -->
+      <path
+         d="M 170,375 L 230,375 L 245,358 L 180,342 L 170,350 Z"
+         fill="url(#hullDark)"
+         id="path31" />
+      <rect
+         x="155"
+         y="348"
+         width="20"
+         height="24"
+         rx="3"
+         fill="url(#hullMid)"
+         id="rect31" />
+      <!-- Rear Center Spine & Power Cables -->
+      <!-- Conduits / Cables -->
+      <path
+         d="M 180,270 Q 230,265 290,280"
+         fill="none"
+         stroke="#225363"
+         stroke-width="4"
+         id="path33" />
+      <path
+         d="M 180,330 Q 230,335 290,320"
+         fill="none"
+         stroke="#225363"
+         stroke-width="4"
+         id="path34" />
+      <path
+         d="M 175,280 Q 225,280 280,290"
+         fill="none"
+         stroke="#5bfbf1"
+         stroke-width="2"
+         filter="url(#glow-cyan)"
+         id="path35" />
+      <path
+         d="M 175,320 Q 225,320 280,310"
+         fill="none"
+         stroke="#5bfbf1"
+         stroke-width="2"
+         filter="url(#glow-cyan)"
+         id="path36" />
+      <!-- Rear Pointed Tail Fin -->
+      <path
+         d="M 130,300 L 190,265 L 220,300 L 190,335 Z"
+         fill="url(#hullLight)"
+         id="path37" />
+      <path
+         d="M 160,300 L 190,280 L 205,300 L 190,320 Z"
+         fill="url(#hullMid)"
+         id="path38" />
+    </g>
+    <!-- 3. MAIN FACETED REAR SUPERSTRUCTURE -->
+    <g
+       stroke="#132448"
+       stroke-width="3"
+       stroke-linejoin="round"
+       stroke-linecap="round"
+       id="g55">
+      <!-- Outer Wing Flairs (Aft) -->
+      <path
+         d="M 280,230 484.26211,132.51768 430,210 360,265 Z"
+         fill="url(#hullMid)"
+         id="path39"
+         sodipodi:nodetypes="ccccc" />
+      <path
+         d="M 280,370 494.2,476.93078 430,390 360,335 Z"
+         fill="url(#hullMid)"
+         id="path40"
+         sodipodi:nodetypes="ccccc" />
+      <!-- Main Faceted Armor Block -->
+      <path
+         d="m 260,250 100,-50 130,5 -20,95 20,95 -130,5 -100,-50 30,-30 10,-20 -10,-20 z"
+         fill="url(#hullLight)"
+         id="path41"
+         sodipodi:nodetypes="ccccccccccc" />
+      <!-- Inner Armor Insets (Top/Bottom Symmetry) -->
+      <path
+         d="m 330,240 134.95248,-0.33541 -3.70253,26.83539 L 292,266.74983 Z"
+         fill="url(#hullLight)"
+         id="path42"
+         sodipodi:nodetypes="ccccc" />
+      <path
+         d="m 330,360 136.45246,0.33541 9.88131,-30.25003 L 292,333.25017 Z"
+         fill="url(#hullLight)"
+         id="path43"
+         sodipodi:nodetypes="ccccc" />
+      <!-- Center Facet Diamond Gem -->
+      <polygon
+         points="410,300 435,275 460,300 435,325"
+         fill="#a3f7ee"
+         stroke="#132448"
+         stroke-width="2.5"
+         id="polygon43" />
+      <polygon
+         points="418,300 435,283 452,300 435,317"
+         fill="#ffffff"
+         id="polygon44" />
+      <!-- Circular Hull Vent Triplets (Upper & Lower) -->
+      <!-- Upper Triad -->
+      <circle
+         cx="345"
+         cy="270"
+         r="11"
+         fill="url(#hullDark)"
+         id="circle44" />
+      <circle
+         cx="370"
+         cy="270"
+         r="11"
+         fill="url(#hullDark)"
+         id="circle45" />
+      <circle
+         cx="395"
+         cy="270"
+         r="11"
+         fill="url(#hullDark)"
+         id="circle46" />
+      <circle
+         cx="345"
+         cy="270"
+         r="6"
+         fill="#409fa0"
+         id="circle47" />
+      <circle
+         cx="370"
+         cy="270"
+         r="6"
+         fill="#409fa0"
+         id="circle48" />
+      <circle
+         cx="395"
+         cy="270"
+         r="6"
+         fill="#409fa0"
+         id="circle49" />
+      <!-- Lower Triad -->
+      <circle
+         cx="345"
+         cy="330"
+         r="11"
+         fill="url(#hullDark)"
+         id="circle50" />
+      <circle
+         cx="370"
+         cy="330"
+         r="11"
+         fill="url(#hullDark)"
+         id="circle51" />
+      <circle
+         cx="395"
+         cy="330"
+         r="11"
+         fill="url(#hullDark)"
+         id="circle52" />
+      <circle
+         cx="345"
+         cy="330"
+         r="6"
+         fill="#409fa0"
+         id="circle53" />
+      <circle
+         cx="370"
+         cy="330"
+         r="6"
+         fill="#409fa0"
+         id="circle54" />
+      <circle
+         cx="395"
+         cy="330"
+         r="6"
+         fill="#409fa0"
+         id="circle55" />
+    </g>
+    <!-- 4. SWEPT SIDE WINGS & SECONDARY TURRETS -->
+    <g
+       stroke="#132448"
+       stroke-width="3"
+       stroke-linejoin="round"
+       stroke-linecap="round"
+       id="g66">
+      <!-- Upper Swept Wing -->
+      <path
+         d="M 430,210 C 470,140 520,80 610,70 C 580,120 560,170 540,220 Z"
+         fill="url(#hullLight)"
+         id="path55" />
+      <path
+         d="M 450,200 C 485,150 530,105 590,95 C 565,135 545,175 530,210 Z"
+         fill="url(#hullMid)"
+         id="path56" />
+      <!-- Lower Swept Wing -->
+      <path
+         d="M 430,390 C 470,460 520,520 610,530 C 580,480 560,430 540,380 Z"
+         fill="url(#hullLight)"
+         id="path57" />
+      <path
+         d="M 450,400 C 485,450 530,495 590,505 C 565,465 545,425 530,390 Z"
+         fill="url(#hullMid)"
+         id="path58" />
+      <!-- Wing Energy Channel Lines -->
+      <path
+         d="M 470,180 Q 520,140 560,115"
+         fill="none"
+         stroke="#5bfbf1"
+         stroke-width="3"
+         filter="url(#glow-cyan)"
+         id="path59" />
+      <path
+         d="M 470,420 Q 520,460 560,485"
+         fill="none"
+         stroke="#5bfbf1"
+         stroke-width="3"
+         filter="url(#glow-cyan)"
+         id="path60" />
+      <!-- Flanking Point-Defense / Ion Turrets -->
+      <!-- Top Turret -->
+      <g
+         transform="translate(610, 85)"
+         id="g62" />
+      <!-- Bottom Turret -->
+      <g
+         transform="translate(610, 515)"
+         id="g65" />
+    </g>
+    <!-- 5. FORWARD FORK TINES / WEAPON BLADES -->
+    <g
+       stroke="#132448"
+       stroke-width="3"
+       stroke-linejoin="round"
+       stroke-linecap="round"
+       id="g71">
+      <!-- Upper Prong Main Body -->
+      <!-- Upper Prong Inner Panel -->
+      <!-- Lower Prong Main Body -->
+      <path
+         d="m 520,350 230,10 c 110,5 221.13283,-17.5 383.9353,-14.7896 C 985.96972,304.45492 850,335 730,335 H 530 Z"
+         fill="url(#hullLight)"
+         id="path68"
+         sodipodi:nodetypes="cccscc" />
+      <!-- Lower Prong Inner Panel -->
+      <path
+         d="M 663.51792,463.25 H 811.5 c 121.49837,0 202.723,-118.0396 322.4353,-118.0396 C 942.21486,333.76753 850,348 740,345 Z"
+         fill="url(#hullMid)"
+         id="path69"
+         sodipodi:nodetypes="ccccc" />
+      <!-- Inner Blade Emitter Rails (Glowing cyan inner edge) -->
+      <path
+         d="m 580,335 h 170 c 120,0 253.9353,-44.7896 383.9353,10.2104"
+         fill="none"
+         stroke="#5bfbf1"
+         stroke-width="4"
+         filter="url(#glow-cyan)"
+         id="path71"
+         sodipodi:nodetypes="csc" />
+    </g>
+    <!-- 6. CENTRAL CIRCULAR HOUSING & PHOTON-ION CORE ASSEMBLY -->
+    <g
+       stroke="#132448"
+       stroke-width="3"
+       id="g84">
+      <!-- Outer Crescent Wings Housing Connection -->
+      <path
+         d="M 450,300 C 450,200 530,170 630,170 C 730,170 810,200 810,300 C 810,400 730,430 630,430 C 530,430 450,400 450,300 Z"
+         fill="url(#hullMid)"
+         id="path72" />
+      <!-- Gold Trim Accent Ring -->
+      <circle
+         cx="630"
+         cy="300"
+         r="118"
+         fill="none"
+         stroke="url(#goldTrim)"
+         stroke-width="8"
+         id="circle72" />
+      <!-- Outer Light Hull Ring -->
+      <circle
+         cx="630"
+         cy="300"
+         r="110"
+         fill="url(#hullLight)"
+         id="circle73" />
+      <!-- Segmented Panel Lines on Core Ring -->
+      <g
+         stroke="#132448"
+         stroke-width="2"
+         fill="none"
+         id="g76">
+        <line
+           x1="630"
+           y1="190"
+           x2="630"
+           y2="410"
+           id="line73" />
+        <line
+           x1="520"
+           y1="300"
+           x2="740"
+           y2="300"
+           id="line74" />
+        <line
+           x1="552"
+           y1="222"
+           x2="708"
+           y2="378"
+           id="line75" />
+        <line
+           x1="552"
+           y1="378"
+           x2="708"
+           y2="222"
+           id="line76" />
+      </g>
+      <!-- Inner Dark Mechanical Collar -->
+      <circle
+         cx="630"
+         cy="300"
+         r="82"
+         fill="url(#hullDark)"
+         id="circle76" />
+      <!-- Golden Focusing Nodes / Spheres around Rim -->
+      <circle
+         cx="630"
+         cy="222"
+         r="7"
+         fill="url(#goldTrim)"
+         id="circle77" />
+      <circle
+         cx="630"
+         cy="378"
+         r="7"
+         fill="url(#goldTrim)"
+         id="circle78" />
+      <circle
+         cx="552"
+         cy="300"
+         r="7"
+         fill="url(#goldTrim)"
+         id="circle79" />
+      <circle
+         cx="708"
+         cy="300"
+         r="7"
+         fill="url(#goldTrim)"
+         id="circle80" />
+      <!-- Aperture Ring with Concentric Teeth -->
+      <circle
+         cx="630"
+         cy="300"
+         r="68"
+         fill="#0f2b35"
+         stroke="#4ab8c4"
+         stroke-width="4"
+         id="circle81" />
+      <circle
+         cx="630"
+         cy="300"
+         r="58"
+         fill="none"
+         stroke="#236068"
+         stroke-width="6"
+         stroke-dasharray="12,6"
+         id="circle82" />
+      <!-- GLOWING PLASMA CORE -->
+      <circle
+         cx="630"
+         cy="300"
+         r="46"
+         fill="url(#coreEnergy)"
+         stroke="#ffffff"
+         stroke-width="2"
+         filter="url(#glow-core)"
+         id="circle83" />
+      <circle
+         cx="630"
+         cy="300"
+         r="22"
+         fill="#ffffff"
+         filter="url(#glow-cyan)"
+         id="circle84" />
+    </g>
+    <!-- 7. ENERGY ARCS / FIELD LINES AROUND CORE -->
+    <g
+       fill="none"
+       stroke="#7efff5"
+       stroke-width="1.5"
+       opacity="0.75"
+       filter="url(#glow-cyan)"
+       id="g88">
+      <!-- Curved Energy Filaments -->
+      <path
+         d="M 500,240 Q 470,300 500,360"
+         id="path84" />
+      <path
+         d="M 760,240 Q 790,300 760,360"
+         id="path85" />
+      <path
+         d="M 520,220 C 500,180 540,150 580,170"
+         id="path86" />
+      <path
+         d="M 520,380 C 500,420 540,450 580,430"
+         id="path87" />
+      <!-- Field Rings -->
+      <ellipse
+         cx="630"
+         cy="300"
+         rx="140"
+         ry="125"
+         stroke-dasharray="6,15,25,10"
+         id="ellipse87" />
+      <ellipse
+         cx="630"
+         cy="300"
+         rx="155"
+         ry="140"
+         stroke-dasharray="4,20,10,12"
+         id="ellipse88" />
+    </g>
+    <!-- 8. HEAVY CANNON HARDPOINTS (Top/Bottom Core Mounted) -->
+    <g
+       stroke="#132448"
+       stroke-width="2.5"
+       stroke-linejoin="round"
+       id="g92">
+      <!-- Upper Heavy Turret -->
+      <g
+         transform="translate(630, 168)"
+         id="g89">
+        <rect
+           x="-16"
+           y="-12"
+           width="32"
+           height="18"
+           rx="4"
+           fill="url(#hullDark)"
+           id="rect88" />
+        <rect
+           x="-5"
+           y="-30"
+           width="10"
+           height="22"
+           rx="2"
+           fill="url(#hullLight)"
+           id="rect89" />
+        <line
+           x1="0"
+           y1="-30"
+           x2="0"
+           y2="-8"
+           stroke="#5bfbf1"
+           stroke-width="3"
+           filter="url(#glow-cyan)"
+           id="line89" />
+      </g>
+      <!-- Lower Heavy Turret -->
+      <g
+         transform="translate(630, 432)"
+         id="g91">
+        <rect
+           x="-16"
+           y="-6"
+           width="32"
+           height="18"
+           rx="4"
+           fill="url(#hullDark)"
+           id="rect90" />
+        <rect
+           x="-5"
+           y="8"
+           width="10"
+           height="22"
+           rx="2"
+           fill="url(#hullLight)"
+           id="rect91" />
+        <line
+           x1="0"
+           y1="8"
+           x2="0"
+           y2="30"
+           stroke="#5bfbf1"
+           stroke-width="3"
+           filter="url(#glow-cyan)"
+           id="line91" />
+      </g>
+    </g>
+  </g>
+  <!-- HUD TECHNICAL ANNOTATIONS & OVERLAY TEXT -->
+</svg>
