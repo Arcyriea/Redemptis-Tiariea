@@ -73,7 +73,8 @@ test('ActiveModuleMount compatibility validation', () => {
             restrictions: {}
         }],
         thrusterVents: [],
-        utilitySockets: []
+        utilitySockets: [],
+        hullModCapacity: 0
     });
 
     const loadoutId = 'loadout.test';
@@ -125,7 +126,8 @@ test('ActiveModuleMount compatibility fails for wrong category', () => {
             restrictions: {}
         }],
         thrusterVents: [],
-        utilitySockets: []
+        utilitySockets: [],
+        hullModCapacity: 0
     });
 
     const loadoutId = 'loadout.test';
@@ -168,7 +170,8 @@ test('duplicate mounting-point assignments fail explicitly', () => {
         sprites: [],
         weaponHardpoints: [{ id: mountId, position: { x: 0, y: 0 }, rotationDeg: 0, accepts: ['spinal'], restrictions: {} }],
         thrusterVents: [],
-        utilitySockets: []
+        utilitySockets: [],
+        hullModCapacity: 0
     });
 
     const loadoutId = 'loadout.test';
@@ -214,7 +217,8 @@ test('built-in mount reservation is preserved', () => {
         sprites: [],
         weaponHardpoints: [{ id: mountId, position: { x: 0, y: 0 }, rotationDeg: 0, accepts: ['spinal'], restrictions: {}, builtInComponentId: weaponDef.id }],
         thrusterVents: [],
-        utilitySockets: []
+        utilitySockets: [],
+        hullModCapacity: 0
     });
 
     const loadoutId = 'loadout.test';
@@ -252,7 +256,8 @@ test('unverified legacy Skill, Passive, and Spawn remain in compatibility path a
         weaponHardpoints: [],
         activeModuleMounts: [],
         thrusterVents: [],
-        utilitySockets: []
+        utilitySockets: [],
+        hullModCapacity: 0
     });
 
     // We simulate the ShipDataAdapter output: 
@@ -345,7 +350,8 @@ test('existing PlayerCannon runtime behavior is preserved', () => {
         weaponHardpoints: [], // Adapter will populate this for PlayerCannon
         activeModuleMounts: [],
         thrusterVents: [],
-        utilitySockets: []
+        utilitySockets: [],
+        hullModCapacity: 0
     });
     
     // Note: ShipDataAdapter.ingestLegacyData is called during Game.loadGameData

@@ -8,6 +8,29 @@ export const toHullPartId = (id: string): HullPartId => id as HullPartId;
 export const toHullPointId = (id: string): HullPointId => id as HullPointId;
 export const toHullModificationId = (id: string): HullModificationId => id as HullModificationId;
 
+export enum StatModifierType {
+    Additive = 0,
+    Multiplicative = 1
+}
+
+export type ModifiableStatId = 
+    | 'maxHull' 
+    | 'maxShell' 
+    | 'regenShell' 
+    | 'maxEnergy' 
+    | 'regenEnergy' 
+    | 'maxSpeed' 
+    | 'acceleration' 
+    | 'weight' 
+    | 'radius' 
+    | 'value';
+
+export interface StatModifier {
+    stat: ModifiableStatId;
+    type: StatModifierType;
+    value: number; // e.g., 10 for +10, 1.15 for +15%
+}
+
 export interface Point2 {
     x: number;
     y: number;
@@ -81,6 +104,7 @@ export interface HullDefinition {
     activeModuleMounts: readonly ActiveModuleMount[];
     thrusterVents: readonly ThrusterVent[];
     utilitySockets: readonly UtilitySocket[];
+    hullModCapacity: number;
 }
 
 export interface ComponentAttachment {
@@ -256,7 +280,8 @@ export interface HullModificationDefinition {
     id: HullModificationId;
     name: string;
     description: string;
-    effects: Readonly<Record<string, number>>;
+    modifiers: readonly StatModifier[];
+    conflicts?: readonly HullModificationId[];
 }
 
 export interface ProductionQueue {

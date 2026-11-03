@@ -73,7 +73,8 @@ function registerCanonicalBlueprint(game: Game): void {
             restrictions: {}
         }],
         thrusterVents: [],
-        utilitySockets: []
+        utilitySockets: [],
+        hullModCapacity: 0
     });
 
     game.componentDefinitions.set(weapon.id, weapon);

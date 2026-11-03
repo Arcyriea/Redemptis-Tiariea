@@ -12,6 +12,8 @@ import { ProjectileManager } from '../managers/ProjectileManager';
 import {
     ComponentDefinition,
     HullDefinition,
+    HullModificationDefinition,
+    HullModificationId,
     LegacyCompatibilityView,
     ShipLoadout
 } from '../types/Shipmaker';
@@ -47,6 +49,7 @@ export class Game {
     public componentDefinitions = new Map<string, ComponentDefinition>();
     public shipLoadouts = new Map<string, ShipLoadout>();
     public legacyCompatibilityViews = new Map<string, LegacyCompatibilityView>();
+    public hullModificationDefinitions = new Map<HullModificationId, HullModificationDefinition>();
 
     // Game state
     public credits: number = 0;

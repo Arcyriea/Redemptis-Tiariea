@@ -53,7 +53,8 @@ export class ShipDataAdapter {
                 weaponHardpoints: [],
                 activeModuleMounts: [],
                 thrusterVents: [],
-                utilitySockets: []
+                utilitySockets: [],
+                hullModCapacity: 0
             };
             const installations: ShipLoadout['installations'][number][] = [];
             const legacyAttachments: LegacyComponentAttachment[] = [];

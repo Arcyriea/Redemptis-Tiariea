@@ -2,13 +2,42 @@ import { Game } from '../core/Game';
 import { Component } from './Component';
 import { TractorEffect } from '../effects/TractorEffect';
 import { YUTIARINALIA } from '../managers/FactionManager';
+import { StatModifierType } from '../types/Shipmaker';
 import type {
     ComponentDefinition,
     HullDefinition,
+    HullModificationDefinition,
+    HullModificationId,
     LegacyShipDefinition,
+    ModifiableStatId,
     ShipBlueprintDefinition as CanonicalShipBlueprintDefinition
 } from '../types/Shipmaker';
 import type { ShipBlueprintDefinition as LegacyStructuredShipBlueprint } from '../managers/ShipBlueprint';
+
+type ShipStats = { [Stat in ModifiableStatId]: number };
+type ImmutableShipStats = Readonly<ShipStats>;
+
+const MINIMUM_STAT_VALUES: Record<ModifiableStatId, number> = {
+    maxHull: 0,
+    maxShell: 0,
+    regenShell: 0,
+    maxEnergy: 0,
+    regenEnergy: 0,
+    maxSpeed: 0,
+    acceleration: 0,
+    weight: 0,
+    radius: 0,
+    value: 0
+};
+
+function isModifiableStatId(value: unknown): value is ModifiableStatId {
+    return typeof value === 'string' &&
+        Object.prototype.hasOwnProperty.call(MINIMUM_STAT_VALUES, value);
+}
+
+function isValidStatValue(stat: ModifiableStatId, value: number): boolean {
+    return Number.isFinite(value) && value >= MINIMUM_STAT_VALUES[stat];
+}
 
 export class Ship {
     [x: string]: any;
@@ -40,6 +69,14 @@ export class Ship {
     public weight: number = 10;
     public radius: number = 20;
     public value: number = 100;
+
+    // Hull Modification State
+    private _hullMods: Set<HullModificationId> = new Set();
+    public get hullMods(): ReadonlySet<HullModificationId> {
+        return new Set(this._hullMods);
+    }
+    private baseStats: ImmutableShipStats | null = null;
+    private hullDefinition: HullDefinition | null = null;
 
     // Movement & AI
     public moving: boolean = false;
@@ -86,7 +123,24 @@ export class Ship {
 
     init(type: string): void {
         this.type = type;
+
+        // 1. Clear stale state for pooled ships
+        this._hullMods.clear();
+        this.baseStats = null;
+        this.hullDefinition = null;
+
+        // 2. Reset runtime stats to clean baseline
+        this.maxHull = 100;
+        this.maxShell = 50;
+        this.regenShell = 0;
+        this.maxEnergy = 100;
         this.regenEnergy = 20;
+        this.maxSpeed = 5.0;
+        this.acceleration = 0.5;
+        this.weight = 10;
+        this.radius = 20;
+        this.value = 100;
+
         this.removeIt = false;
         this.exploding = false;
         this.immobile = false;
@@ -113,6 +167,29 @@ export class Ship {
         if (this.superType === "Station" || this.superType === "Turret") {
             this.immobile = true;
         }
+
+        // 3. Capture base snapshot after blueprint/tuple application
+        this.baseStats = Object.freeze({
+            maxHull: this.maxHull,
+            maxShell: this.maxShell,
+            regenShell: this.regenShell,
+            maxEnergy: this.maxEnergy,
+            regenEnergy: this.regenEnergy,
+            maxSpeed: this.maxSpeed,
+            acceleration: this.acceleration,
+            weight: this.weight,
+            radius: this.radius,
+            value: this.value
+        });
+
+        // 4. Recalculate effective stats (initial run)
+        const baselineStats = this.calculateStats(this._hullMods, false);
+        if (!baselineStats) {
+            this.active = false;
+            this.removeIt = true;
+            throw new Error(`Failed to calculate baseline stats for ship "${type}".`);
+        }
+        this.commitStats(baselineStats);
 
         this.currentShell = this.maxShell;
         this.currentHull = this.maxHull;
@@ -195,6 +272,8 @@ export class Ship {
             this.validateCanonicalMount(component, entry.point, entry.pointType);
             this.installCanonicalComponent(component, entry.point, 'loadout', false);
         }
+
+        this.hullDefinition = hull;
     }
 
     private initStructuredLegacyBlueprint(blueprint: LegacyStructuredShipBlueprint): void {
@@ -239,6 +318,7 @@ export class Ship {
 
         const compatibilityView = this.game.legacyCompatibilityViews?.get(this.type);
         if (compatibilityView) {
+            this.hullDefinition = this.game.hullDefinitions.get(compatibilityView.hullId) ?? null;
             for (const attachment of compatibilityView.legacyAttachments) {
                 const part = this.parts[attachment.partIndex];
                 if (part) this.addComponent(attachment.componentId, part, 'legacy');
@@ -417,6 +497,182 @@ export class Ship {
         this.value = stats.value;
     }
 
+    public addHullMod(id: HullModificationId): boolean {
+        if (this._hullMods.has(id)) return false;
+
+        const candidateMods = new Set(this._hullMods);
+        candidateMods.add(id);
+        const candidateStats = this.calculateStats(candidateMods);
+        if (!candidateStats) return false;
+
+        this.commitHullModState(candidateMods, candidateStats);
+        return true;
+    }
+
+    public removeHullMod(id: HullModificationId): boolean {
+        if (!this._hullMods.has(id)) return false;
+
+        const candidateMods = new Set(this._hullMods);
+        candidateMods.delete(id);
+        const candidateStats = this.calculateStats(candidateMods);
+        if (!candidateStats) return false;
+
+        this.commitHullModState(candidateMods, candidateStats);
+        return true;
+    }
+
+    private calculateStats(
+        candidateMods: ReadonlySet<HullModificationId>,
+        enforceCapacity = true
+    ): ShipStats | null {
+        if (!this.baseStats) return null;
+
+        const mods = Array.from(candidateMods).sort();
+        const definitions = new Map<HullModificationId, HullModificationDefinition>();
+
+        if (enforceCapacity) {
+            const capacity = this.hullDefinition?.hullModCapacity;
+            if (
+                capacity === undefined ||
+                !Number.isFinite(capacity) ||
+                !Number.isInteger(capacity) ||
+                capacity < 0 ||
+                candidateMods.size > capacity
+            ) {
+                return null;
+            }
+        }
+
+        for (const modId of mods) {
+            const definition = this.game.hullModificationDefinitions.get(modId);
+            if (
+                !definition ||
+                definition.id !== modId ||
+                typeof definition.name !== 'string' ||
+                definition.name.length === 0 ||
+                typeof definition.description !== 'string' ||
+                !Array.isArray(definition.modifiers) ||
+                (definition.conflicts !== undefined &&
+                    (!Array.isArray(definition.conflicts) ||
+                        definition.conflicts.some(
+                            conflictId => typeof conflictId !== 'string' || conflictId.length === 0
+                        )))
+            ) {
+                return null;
+            }
+
+            for (const modifier of definition.modifiers) {
+                if (
+                    !modifier ||
+                    typeof modifier !== 'object' ||
+                    !isModifiableStatId(modifier.stat) ||
+                    (modifier.type !== StatModifierType.Additive &&
+                        modifier.type !== StatModifierType.Multiplicative) ||
+                    !Number.isFinite(modifier.value) ||
+                    (modifier.type === StatModifierType.Multiplicative &&
+                        modifier.value < 0)
+                ) {
+                    return null;
+                }
+            }
+
+            definitions.set(modId, definition);
+        }
+
+        for (let index = 0; index < mods.length; index++) {
+            const modId = mods[index];
+            const definition = definitions.get(modId);
+            if (!definition) return null;
+
+            for (let otherIndex = index + 1; otherIndex < mods.length; otherIndex++) {
+                const otherId = mods[otherIndex];
+                const otherDefinition = definitions.get(otherId);
+                if (!otherDefinition) return null;
+
+                if (
+                    definition.conflicts?.includes(otherId) ||
+                    otherDefinition.conflicts?.includes(modId)
+                ) {
+                    return null;
+                }
+            }
+        }
+
+        // Every supported stat is present once through the mapped stats type.
+        const candidate: ShipStats = { ...this.baseStats };
+
+        // Additive Phase
+        for (const modId of mods) {
+            const definition = definitions.get(modId);
+            if (!definition) return null;
+            for (const modifier of definition.modifiers) {
+                switch (modifier.type) {
+                    case StatModifierType.Additive:
+                        candidate[modifier.stat] += modifier.value;
+                        break;
+                    case StatModifierType.Multiplicative:
+                        break;
+                    default:
+                        return null;
+                }
+            }
+        }
+
+        // Multiplicative Phase
+        for (const modId of mods) {
+            const definition = definitions.get(modId);
+            if (!definition) return null;
+            for (const modifier of definition.modifiers) {
+                switch (modifier.type) {
+                    case StatModifierType.Additive:
+                        break;
+                    case StatModifierType.Multiplicative:
+                        candidate[modifier.stat] *= modifier.value;
+                        break;
+                    default:
+                        return null;
+                }
+            }
+        }
+
+        for (const stat of Object.keys(candidate)) {
+            if (
+                !isModifiableStatId(stat) ||
+                !isValidStatValue(stat, candidate[stat])
+            ) {
+                return null;
+            }
+        }
+
+        return candidate;
+    }
+
+    private commitHullModState(
+        candidateMods: ReadonlySet<HullModificationId>,
+        candidateStats: ShipStats
+    ): void {
+        this._hullMods.clear();
+        for (const modId of candidateMods) this._hullMods.add(modId);
+        this.commitStats(candidateStats);
+    }
+
+    private commitStats(candidateStats: ShipStats): void {
+        this.maxHull = candidateStats.maxHull;
+        this.maxShell = candidateStats.maxShell;
+        this.regenShell = candidateStats.regenShell;
+        this.maxEnergy = candidateStats.maxEnergy;
+        this.regenEnergy = candidateStats.regenEnergy;
+        this.maxSpeed = candidateStats.maxSpeed;
+        this.acceleration = candidateStats.acceleration;
+        this.weight = candidateStats.weight;
+        this.radius = candidateStats.radius;
+        this.value = candidateStats.value;
+
+        this.currentHull = Math.min(this.currentHull, this.maxHull);
+        this.currentShell = Math.min(this.currentShell, this.maxShell);
+        this.currentEnergy = Math.min(this.currentEnergy, this.maxEnergy);
+    }
+
     update() {
         if (this.removeIt) return;
 
@@ -580,5 +836,8 @@ export class Ship {
         this.compSpawn.length = 0;
         this.compPassive.length = 0;
         this.waypoints.length = 0;
+        this._hullMods.clear();
+        this.baseStats = null;
+        this.hullDefinition = null;
     }
 }
