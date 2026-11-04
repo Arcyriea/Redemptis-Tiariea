@@ -1,8 +1,9 @@
 import { Game } from '../core/Game';
-import { Ship } from './Ship';
+import type { Ship } from './Ship';
 import { Weapon } from '../weapons/Weapon';
 import { ManagedWeapon } from '../weapons/ManagedWeapon';
 import { Ability } from '../abilities/Ability';
+import { ActiveModuleRuntime } from '../abilities/ActiveModuleRuntime';
 import type { ComponentDefinition, LegacyComponentDef, LegacyComponentTuple } from '../types/Shipmaker';
 
 /**
@@ -22,12 +23,12 @@ export class Component {
 
     // Stats & State
     public value: number = 0;
-    public ready: boolean = true;
     public active: boolean = true;
     public removeIt: boolean = false;
     public cooldown: number = 0;    // seconds
     public energyCost: number = 0;
     public counter: number = 0;     // tick counter for cooldown
+    private componentReady = true;
     public turretAngleDeg: number = 0;
     public installationSource: 'loadout' | 'built-in' | 'legacy' = 'legacy';
     public fixed: boolean = false;
@@ -37,6 +38,16 @@ export class Component {
     // Functionality References
     public effect: Weapon | null = null;
     public ability: Ability | null = null;
+    public activeModuleRuntime: ActiveModuleRuntime | null = null;
+
+    get ready(): boolean {
+        return this.activeModuleRuntime?.ready ?? this.componentReady;
+    }
+
+    set ready(value: boolean) {
+        this.componentReady = value;
+        this.activeModuleRuntime?.setReady(value);
+    }
 
     // Visual indicators
     public tint: any = null; // Visual state for skill buttons
@@ -54,6 +65,7 @@ export class Component {
         ship: Ship | null = null,
         part: any = null
     ) {
+        this.reset();
         this.ship = ship;
         this.shipPart = part;
         this.type = '';
@@ -61,15 +73,18 @@ export class Component {
         this.name = '';
         this.description = '';
         this.value = 0;
-        this.ready = true;
+        this.componentReady = true;
         this.counter = 0;
         this.cooldownElapsedMs = 0;
         this.activationPending = false;
+        this.cooldown = 0;
+        this.energyCost = 0;
         this.turretAngleDeg = 0;
         this.installationSource = 'legacy';
         this.fixed = false;
         this.effect = null;
         this.ability = null;
+        this.activeModuleRuntime = null;
 
         if (typeof definitionOrName === 'string') {
             // Legacy fallback: lookup in registries
@@ -119,6 +134,7 @@ export class Component {
             case 'active-module':
                 this.subType = def.category;
                 this.type = "ActiveModule";
+                this.activeModuleRuntime = new ActiveModuleRuntime(this.game, def, this.ship);
                 break;
         }
     }
@@ -208,6 +224,12 @@ export class Component {
      * Updates the component state (handling cooldowns).
      */
     update(delta?: number) {
+        if (this.activeModuleRuntime) {
+            this.activeModuleRuntime.setOwner(this.ship);
+            this.activeModuleRuntime.update(delta ?? 0);
+            return;
+        }
+
         if (this.ready || this.activationPending) return;
 
         if (this.type === "Weapon" && delta !== undefined) {
@@ -232,7 +254,12 @@ export class Component {
     /**
      * Triggers the component's primary action (firing or activating skill).
      */
-    async activate(target: any = null): Promise<boolean> {
+    async activate(target: Ship | null = null): Promise<boolean> {
+        if (this.activeModuleRuntime) {
+            this.activeModuleRuntime.setOwner(this.ship);
+            return this.activeModuleRuntime.activate(target);
+        }
+
         const ship = this.ship;
         if (!this.ready || !ship) return false;
 
@@ -287,7 +314,8 @@ export class Component {
      * Resets the component state.
      */
     reset() {
-        this.ready = true;
+        this.activeModuleRuntime?.reset();
+        this.componentReady = true;
         this.counter = 0;
         this.cooldownElapsedMs = 0;
         this.activationPending = false;
@@ -295,5 +323,9 @@ export class Component {
             this.ability.ready = true;
             this.ability.deactivate();
         }
+    }
+
+    cancelActivation(): boolean {
+        return this.activeModuleRuntime?.cancel() ?? false;
     }
 }

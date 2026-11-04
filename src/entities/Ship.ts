@@ -122,6 +122,7 @@ export class Ship {
     }
 
     init(type: string): void {
+        for (const component of this.components) component.reset();
         this.type = type;
 
         // 1. Clear stale state for pooled ships
@@ -673,7 +674,7 @@ export class Ship {
         this.currentEnergy = Math.min(this.currentEnergy, this.maxEnergy);
     }
 
-    update() {
+    update(delta?: number) {
         if (this.removeIt) return;
 
         // Handle movement
@@ -682,9 +683,7 @@ export class Ship {
         }
 
         // Handle component recharges and cooldowns
-        for (const comp of this.components) {
-            comp.update();
-        }
+        this.updateComponents(delta);
 
         // Handle AI or Player control updates
         if (this.shipAi) {
@@ -693,6 +692,10 @@ export class Ship {
 
         // Check bounds / collisions
         this.checkCollision();
+    }
+
+    updateComponents(delta?: number): void {
+        for (const component of this.components) component.update(delta);
     }
 
     regenerateEnergy(delta: number): void {
@@ -822,6 +825,7 @@ export class Ship {
     }
 
     resetIt() {
+        for (const component of this.components) component.reset();
         this.removeIt = false;
         this.exploding = false;
         this.currentHull = this.maxHull;

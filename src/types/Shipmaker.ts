@@ -191,9 +191,24 @@ export interface UtilityComponentDefinition extends BaseComponentDef {
     sprites: readonly SpriteLayer[];
 }
 
+export type ActiveModuleOperation = BaseComponentDef['operation'] & {
+    chargeTime?: number;
+};
+
+export type ActiveModuleTargeting =
+    | { kind: 'self' }
+    | { kind: 'single'; allowed: readonly ('Ally' | 'Enemy')[] }
+    | { kind: 'area'; allowed: readonly ('Ally' | 'Enemy')[]; radius: number; includeSelf: boolean };
+
+export type ActiveModulePayload =
+    | { kind: 'resource_restore'; shell: number; hull: number; energy: number };
+
 export interface ActiveModuleDefinition extends BaseComponentDef {
     kind: 'active-module';
     category: string;
+    operation: ActiveModuleOperation;
+    payload: ActiveModulePayload;
+    targeting: ActiveModuleTargeting;
     sprites: readonly SpriteLayer[];
 }
 

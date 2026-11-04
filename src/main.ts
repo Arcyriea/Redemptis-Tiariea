@@ -476,9 +476,7 @@ class GameScene extends Phaser.Scene {
             this.playerShip.rotation = this.player.rotation * (180 / Math.PI); // rad → deg
             this.playerShip.moveX = body.velocity.x;
             this.playerShip.moveY = body.velocity.y;
-            for (const comp of this.playerShip.compWeapon) {
-                comp.update(delta);
-            }
+            this.playerShip.updateComponents(delta);
         }
 
         // Fire via compWeapon iteration (replaces manual fireProjectile)

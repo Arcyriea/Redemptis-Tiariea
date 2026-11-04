@@ -31,6 +31,8 @@ test('canonical Active Module retains distinct identity and is not classified as
         kind: 'active-module',
         category: 'Tactical',
         operation: { cooldown: 10, energyCost: 20 },
+        payload: { kind: 'resource_restore', shell: 0, hull: 0, energy: 0 },
+        targeting: { kind: 'self' },
         attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 },
         sprites: []
     };
@@ -53,6 +55,8 @@ test('ActiveModuleMount compatibility validation', () => {
         kind: 'active-module',
         category: 'Tactical',
         operation: { cooldown: 10, energyCost: 20 },
+        payload: { kind: 'resource_restore', shell: 0, hull: 0, energy: 0 },
+        targeting: { kind: 'self' },
         attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 },
         sprites: []
     };
@@ -106,6 +110,8 @@ test('ActiveModuleMount compatibility fails for wrong category', () => {
         kind: 'active-module',
         category: 'Tactical',
         operation: { cooldown: 10, energyCost: 20 },
+        payload: { kind: 'resource_restore', shell: 0, hull: 0, energy: 0 },
+        targeting: { kind: 'self' },
         attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 },
         sprites: []
     };

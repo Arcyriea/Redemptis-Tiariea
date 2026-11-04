@@ -184,7 +184,7 @@ export class Game {
         this.renderFinishTime = time;
 
         // Update systems
-        this.updateQueues();
+        this.updateQueues(delta);
         this.regenerateShipEnergy(delta);
         this.updateEffects();
         this.updateTasks();
@@ -204,13 +204,13 @@ export class Game {
         this.processRespawnQueue();
     }
 
-    updateQueues() {
+    updateQueues(delta?: number) {
         for (let i = this.shipQueue.length - 1; i >= 0; i--) {
             const ship = this.shipQueue[i];
             if (ship.removeIt) {
                 this.shipManager?.disposeShip(ship);
             } else if (ship.active) {
-                ship.update();
+                ship.update(delta);
             }
         }
     }
@@ -420,6 +420,23 @@ export class Game {
             }
         }
 
+        return ships;
+    }
+
+    getActiveShipsInArea(x: number, y: number, radius: number): Ship[] {
+        const candidates = new Set<Ship>(this.shipQueue);
+        for (const entity of this.entityManager?.getAll() ?? []) {
+            if (entity instanceof Ship) candidates.add(entity);
+        }
+
+        const ships: Ship[] = [];
+        for (const ship of candidates) {
+            if (!ship.active || ship.removeIt) continue;
+
+            const dx = ship.x - x;
+            const dy = ship.y - y;
+            if (dx * dx + dy * dy <= radius * radius) ships.push(ship);
+        }
         return ships;
     }
 }
