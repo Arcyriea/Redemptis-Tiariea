@@ -1,10 +1,11 @@
+#!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
 import saxes from 'saxes';
+import { listSourceAssets } from './asset-roots.mjs';
 
 const PROJECT_NAME = 'Redemptis-Tiariea';
 const HEAD_DIRECTOR = 'Arcyriea (Head Director)';
-const PUBLIC_DIR = path.resolve('public');
 const BACKUP_DIR = path.resolve('scripts/backups/svg-copyright');
 const OWNERSHIP_FILE = path.resolve('scripts/svg-ownership.json');
 
@@ -18,14 +19,14 @@ const OWNERSHIP_TYPES = {
 /**
  * Generates the RDF/Dublin Core metadata block.
  */
-function generateMetadataBlock(title = null) {
-    const currentYear = new Date().getFullYear();
-    const rightsNotice = `Copyright (c) ${currentYear} ${PROJECT_NAME}. All rights reserved.`;
-    const rightsStatement = 'Unauthorized reproduction, redistribution, modification, or commercial use requires prior written permission from the respective rights holders.';
+export function generateMetadataBlock(title) {
+    var currentYear = new Date().getFullYear();
+    var rightsNotice = 'Copyright (c) ' + currentYear + ' ' + PROJECT_NAME + '. All rights reserved.';
+    var rightsStatement = 'Unauthorized reproduction, redistribution, modification, or commercial use requires prior written permission from the respective rights holders.';
 
-    let titleElem = '';
+    var titleElem = '';
     if (title) {
-        titleElem = `\n        <dc:title>${escapeXml(title)}</dc:title>`;
+        titleElem = '\n        <dc:title>' + escapeXml(title) + '</dc:title>';
     }
 
     return `
@@ -38,7 +39,11 @@ function generateMetadataBlock(title = null) {
     </rdf:RDF>`;
 }
 
-function escapeXml(unsafe) {
+/**
+ * Escapes text for XML output.
+ * Escapes XML special characters.
+ */
+export function escapeXml(unsafe) {
     return unsafe.replace(/[<>&"']/g, (c) => {
         switch (c) {
             case '<': return '&lt;';
@@ -56,8 +61,8 @@ function escapeXml(unsafe) {
  * Returns { hasProjectMetadata: boolean, hasThirdPartyCopyright: boolean, title: string|null, isMalformed: boolean }
  */
 export function analyzeSvgMetadata(content) {
-    const parser = new saxes.SaxesParser();
-    let result = {
+    var parser = new saxes.SaxesParser();
+    var result = {
         hasProjectMetadata: false,
         hasThirdPartyCopyright: false,
         title: null,
@@ -66,42 +71,37 @@ export function analyzeSvgMetadata(content) {
         inMetadata: false
     };
 
-    parser.onerror = (e) => {
-        // SVG files often have non-standard tags or attributes that saxes might flag as errors.
-        // For the purpose of metadata inspection, we can be lenient.
-        parser.resume();
-    };
+    parser.on('error', function () {
+        result.isMalformed = true;
+    });
 
-    parser.onopentag = (node) => {
+    parser.on('opentag', function (node) {
         result.currentElement = node.name;
         if (node.name === 'metadata') result.inMetadata = true;
-        
-        // Check for project identification in attributes if any
-        for (const [key, val] of Object.entries(node.attributes)) {
-            if (val.includes(PROJECT_NAME)) result.hasProjectMetadata = true;
-        }
-    };
 
-    parser.ontext = (text) => {
+        for (var attributeValue of Object.values(node.attributes)) {
+            if (attributeValue.includes(PROJECT_NAME)) result.hasProjectMetadata = true;
+        }
+    });
+
+    parser.on('text', function (text) {
         if (text.includes(PROJECT_NAME) && text.includes('Copyright')) {
             result.hasProjectMetadata = true;
         }
-        // REMOVED: Global "Copyright" check that flagged everything as third-party
         if (result.inMetadata && result.currentElement === 'title') {
             result.title = text.trim();
         }
-    };
+    });
 
-    parser.onclosetag = (name) => {
-        if (name === 'metadata') result.inMetadata = false;
+    parser.on('closetag', function (node) {
+        if (node.name === 'metadata') result.inMetadata = false;
         result.currentElement = null;
-    };
+    });
 
     try {
         parser.write(content).close();
     } catch (e) {
-        // Swallow parsing errors during analysis to allow metadata insertion 
-        // if we can find the tags via regex.
+        result.isMalformed = true;
     }
     return result;
 }
@@ -110,181 +110,289 @@ export function analyzeSvgMetadata(content) {
  * Validates that a string is well-formed XML.
  * @returns {boolean}
  */
-function isValidXml(content) {
-    const parser = new saxes.SaxesParser();
+export function isValidXml(content) {
+    var parser = new saxes.SaxesParser();
+    var isValid = true;
+    parser.on('error', function () {
+        isValid = false;
+    });
     try {
         parser.write(content).close();
-        return true;
     } catch (e) {
-        return false;
+        isValid = false;
     }
+    return isValid;
 }
 
 /**
  * Inserts metadata into SVG source.
  */
 export function insertMetadata(content, metadataBlock) {
-    // 1. Look for existing <metadata> tag
-    const metadataMatch = content.match(/<metadata\b[^>]*>([\s\S]*?)<\/metadata>/i);
+    var metadataMatch = content.match(/<metadata\b[^>]*>([\s\S]*?)<\/metadata>/i);
     if (metadataMatch) {
-        const start = metadataMatch.index;
-        const end = start + metadataMatch[0].length;
-        const existingContent = metadataMatch[1];
+        var start = metadataMatch.index;
+        var end = start + metadataMatch[0].length;
+        var existingContent = metadataMatch[1];
 
-        // Avoid duplication
         if (existingContent.includes(PROJECT_NAME)) {
             return null;
         }
 
-        const modified = content.slice(0, end) + metadataBlock + content.slice(end);
+        var modified = content.slice(0, end) + metadataBlock + content.slice(end);
         return isValidXml(modified) ? modified : null;
     }
 
-    // 2. Insert after opening <svg> tag
-    const svgMatch = content.match(/<svg\b[^>]*>/i);
+    var svgMatch = content.match(/<svg\b[^>]*>/i);
     if (!svgMatch) return null;
 
-    const endOfSvgTag = svgMatch.index + svgMatch[0].length;
-    const modified = content.slice(0, endOfSvgTag) + '\n  <metadata>' + metadataBlock + '\n  </metadata>' + content.slice(endOfSvgTag);
+    var endOfSvgTag = svgMatch.index + svgMatch[0].length;
+    var modified = content.slice(0, endOfSvgTag) + '\n  <metadata>' + metadataBlock + '\n  </metadata>' + content.slice(endOfSvgTag);
     return isValidXml(modified) ? modified : null;
 }
 
-async function run() {
-    const args = process.argv.slice(2);
-    const isDryRun = args.includes('--dry-run');
-    const restoreBackups = args.includes('--restore');
+/**
+ * Build the canonical inventory of all SVG assets from all source roots.
+ * Each entry is { logicalPath, physicalSourcePath }.
+ * This inventory includes all 36 SVG files (31 assets/ + 3 minimap + 2 root-level),
+ * matching the previous utility's complete coverage.
+ */
+export async function buildCanonicalInventory() {
+    var inventory = [];
+    var seen = new Set();
 
-    console.log(`Starting SVG Copyright Utility ${isDryRun ? '(DRY RUN)' : ''}${restoreBackups ? ' (RESTORE MODE)' : ''}...`);
-
-    const ownershipData = JSON.parse(fs.readFileSync(OWNERSHIP_FILE, 'utf-8'));
-    const files = [];
-
-    // Recursive search
-    function walk(dir) {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const entry of entries) {
-            const res = path.resolve(dir, entry.name);
-            if (entry.isDirectory()) {
-                walk(res);
-            } else if (entry.name.toLowerCase().endsWith('.svg')) {
-                files.push(res);
+    // Pull in every asset the source-root mapper knows about.
+    // listSourceAssets() already returns 36 entries that comprehensively cover:
+    //   - 31 assets/ SVGs (Components + Ships + Turrets-Platforms)
+    //   - 3 minimap SVGs
+    //   - 2 root-level SVGs (favicon.svg, icons.svg)
+    try {
+        var allSources = await listSourceAssets();
+        for (var j = 0; j < allSources.length; j++) {
+            var ref = allSources[j];
+            var logicalPath = ref.logicalPath;
+            if (seen.has(logicalPath)) {
+                continue;
             }
+            seen.add(logicalPath);
+            inventory.push({
+                logicalPath: logicalPath,
+                physicalSourcePath: ref.physicalPath
+            });
+        }
+    } catch (e) {
+        // Failure to build the inventory is a fatal condition.
+        console.error('Fatal: could not build canonical SVG inventory: ' + e.message);
+        throw e;
+    }
+
+    return inventory;
+}
+
+function restoreInventory(inventory, backupDir) {
+    var result = {
+        restored: [],
+        missingBackups: [],
+        failed: []
+    };
+
+    for (var ref of inventory) {
+        var logicalBackup = path.join(backupDir, ref.logicalPath);
+        var legacyBackup = path.join(backupDir, 'public', ref.logicalPath);
+        var backupPath = fs.existsSync(logicalBackup) ? logicalBackup :
+            fs.existsSync(legacyBackup) ? legacyBackup : null;
+
+        if (!backupPath) {
+            result.missingBackups.push(ref.logicalPath);
+            continue;
+        }
+
+        try {
+            fs.writeFileSync(ref.physicalSourcePath, fs.readFileSync(backupPath));
+            result.restored.push(ref.logicalPath);
+        } catch (e) {
+            result.failed.push(ref.logicalPath + ': restore failed: ' + e.message);
         }
     }
-    walk(PUBLIC_DIR);
 
-    const report = {
-        total: files.length,
+    return result;
+}
+
+/**
+ * Run the copyright utility.
+ */
+export async function run({
+    args = process.argv.slice(2),
+    inventory: suppliedInventory,
+    backupDir = BACKUP_DIR,
+    ownershipFile = OWNERSHIP_FILE
+} = {}) {
+    var isDryRun = args.includes('--dry-run');
+    var restoreBackups = args.includes('--restore');
+
+    console.log('Starting SVG Copyright Utility ' + (isDryRun ? '(DRY RUN)' : '') +
+        (restoreBackups ? ' (RESTORE MODE)' : '') + '...');
+
+    var inventory = suppliedInventory;
+    if (inventory === undefined) {
+        try {
+            inventory = await buildCanonicalInventory();
+        } catch {
+            return 1;
+        }
+    }
+
+    if (inventory.length === 0) {
+        console.error('Fatal: no SVG assets found in the canonical inventory.');
+        return 1;
+    }
+
+    if (restoreBackups) {
+        var restoration = restoreInventory(inventory, backupDir);
+        console.log('\n--- Restore Summary ---');
+        console.log('Total SVGs found: ' + inventory.length);
+        console.log('Files restored:   ' + restoration.restored.length);
+        console.log('Missing backups:  ' + restoration.missingBackups.length);
+        console.log('Failed restores:  ' + restoration.failed.length);
+
+        if (restoration.restored.length) {
+            console.log('\nRestored Files:');
+            restoration.restored.forEach(function (file) { console.log(' - ' + file); });
+        }
+        if (restoration.missingBackups.length) {
+            console.log('\nMissing Backups:');
+            restoration.missingBackups.forEach(function (file) { console.log(' - ' + file); });
+        }
+        if (restoration.failed.length) {
+            console.log('\nFailed Restorations:');
+            restoration.failed.forEach(function (file) { console.log(' - ' + file); });
+        }
+
+        return restoration.missingBackups.length || restoration.failed.length ? 1 : 0;
+    }
+
+    var ownershipData;
+    try {
+        ownershipData = JSON.parse(fs.readFileSync(ownershipFile, 'utf-8'));
+    } catch (e) {
+        console.error('Fatal: could not read ownership data: ' + e.message);
+        return 1;
+    }
+
+    var report = {
+        total: inventory.length,
         alreadyValid: 0,
         modified: 0,
-        restored: 0,
         skippedOwnership: [],
         skippedAmbiguous: [],
         malformed: [],
         failed: []
     };
 
-    for (const filePath of files) {
-        const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
-        
-        if (restoreBackups) {
-            const backupPath = path.join(BACKUP_DIR, relativePath);
-            if (fs.existsSync(backupPath)) {
-                fs.writeFileSync(filePath, fs.readFileSync(backupPath));
-                report.restored++;
-            }
+    for (var m = 0; m < inventory.length; m++) {
+        var ref2 = inventory[m];
+        var logicalPath = ref2.logicalPath;
+        var physicalSourcePath = ref2.physicalSourcePath;
+
+        // Read the canonical physical source file.
+        var content;
+        try {
+            content = fs.readFileSync(physicalSourcePath, 'utf-8');
+        } catch (e) {
+            report.failed.push(logicalPath + ': failed to read physical source "' + physicalSourcePath + '": ' + e.message);
             continue;
         }
 
-        const ownership = ownershipData.assets[relativePath] || ownershipData.defaults.fallback;
+        // Resolve ownership using the logical asset identity. Ownership data keys
+        // use the "public/..." format (e.g. "public/assets/Ships/Yutiarin Kinetic Lance Frigate.svg").
+        var ownershipPrefixed = ownershipData.assets['public/' + logicalPath];
+        var ownership = ownershipPrefixed || ownershipData.defaults.fallback;
 
-        if (ownership === OWNERSHIP_TYPES.THIRD_PARTY || ownership === OWNERSHIP_TYPES.COLLABORATOR_OWNED) {
-            report.skippedOwnership.push(`${relativePath} (${ownership})`);
+        if (ownership === OWNERSHIP_TYPES.THIRD_PARTY ||
+                ownership === OWNERSHIP_TYPES.COLLABORATOR_OWNED) {
+            report.skippedOwnership.push(logicalPath + ' (' + ownership + ')');
             continue;
         }
 
         if (ownership === OWNERSHIP_TYPES.UNKNOWN) {
-            report.skippedAmbiguous.push(relativePath);
+            report.skippedAmbiguous.push(logicalPath);
             continue;
         }
 
-        try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            const analysis = analyzeSvgMetadata(content);
+        // Validate the SVG's XML/Smetadata.
+        var analysis = analyzeSvgMetadata(content);
 
-            if (analysis.isMalformed) {
-                report.malformed.push(relativePath);
-                continue;
-            }
-
-            if (analysis.hasProjectMetadata) {
-                report.alreadyValid++;
-                continue;
-            }
-
-            if (analysis.hasThirdPartyCopyright) {
-                report.skippedAmbiguous.push(`${relativePath} (contains third-party copyright)`);
-                continue;
-            }
-
-            const metadataBlock = generateMetadataBlock(analysis.title);
-            const modifiedContent = insertMetadata(content, metadataBlock);
-
-            if (!modifiedContent) {
-                report.alreadyValid++;
-                continue;
-            }
-
-            if (!isDryRun) {
-                // Backup
-                if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
-                const backupPath = path.join(BACKUP_DIR, relativePath);
-                fs.mkdirSync(path.dirname(backupPath), { recursive: true });
-                fs.writeFileSync(backupPath, content);
-
-                // Write
-                fs.writeFileSync(filePath, modifiedContent);
-            }
-
-            report.modified++;
-        } catch (e) {
-            report.failed.push(`${relativePath}: ${e.message}`);
+        if (analysis.isMalformed) {
+            report.malformed.push(logicalPath);
+            continue;
         }
+
+        if (analysis.hasProjectMetadata) {
+            report.alreadyValid++;
+            continue;
+        }
+
+        if (analysis.hasThirdPartyCopyright) {
+            report.skippedAmbiguous.push(logicalPath + ' (contains third-party copyright)');
+            continue;
+        }
+
+        var metadataBlock = generateMetadataBlock(analysis.title);
+        var modifiedContent = insertMetadata(content, metadataBlock);
+
+        if (!modifiedContent) {
+            report.alreadyValid++;
+            continue;
+        }
+
+        if (!isDryRun) {
+            // Backup and write target the canonical physical source path.
+            if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+            var backupPath = path.join(backupDir, logicalPath);
+            fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+            fs.writeFileSync(backupPath, content);
+
+            fs.writeFileSync(physicalSourcePath, modifiedContent);
+        }
+
+        report.modified++;
     }
 
     console.log('\n--- Execution Summary ---');
-    console.log(`Total SVGs found: ${report.total}`);
-    if (restoreBackups) {
-        console.log(`Files restored:   ${report.restored}`);
-    } else {
-        console.log(`Already valid:   ${report.alreadyValid}`);
-        console.log(`Modified:        ${report.modified}`);
-        console.log(`Malformed:       ${report.malformed.length}`);
-        console.log(`Failed:          ${report.failed.length}`);
-    }
+    console.log('Total SVGs found: ' + report.total);
+    console.log('Already valid:    ' + report.alreadyValid);
+    console.log('Modified:         ' + report.modified);
+    console.log('Malformed:        ' + report.malformed.length);
+    console.log('Failed:           ' + report.failed.length);
 
     if (report.skippedOwnership.length) {
         console.log('\nSkipped (Ownership):');
-        report.skippedOwnership.forEach(f => console.log(` - ${f}`));
+        report.skippedOwnership.forEach(function (f) { console.log(' - ' + f); });
     }
     if (report.skippedAmbiguous.length) {
         console.log('\nSkipped (Ambiguous/Manual Review):');
-        report.skippedAmbiguous.forEach(f => console.log(` - ${f}`));
+        report.skippedAmbiguous.forEach(function (f) { console.log(' - ' + f); });
     }
     if (report.malformed.length) {
         console.log('\nMalformed Files:');
-        report.malformed.forEach(f => console.log(` - ${f}`));
+        report.malformed.forEach(function (f) { console.log(' - ' + f); });
     }
     if (report.failed.length) {
         console.log('\nFailed Modifications:');
-        report.failed.forEach(f => console.log(` - ${f}`));
+        report.failed.forEach(function (f) { console.log(' - ' + f); });
     }
 
-    if (!isDryRun && !restoreBackups && report.modified > 0) {
-        console.log(`\nBackups stored in: ${BACKUP_DIR}`);
+    if (!isDryRun && report.modified > 0) {
+        console.log('\nBackups stored in: ' + backupDir);
     }
+
+    return 0;
 }
 
-if (process.argv[1].endsWith('add-svg-copyright.mjs')) {
-    run().catch(console.error);
+if (process.argv[1] && process.argv[1].endsWith('add-svg-copyright.mjs')) {
+    run().then(function (exitCode) {
+        if (exitCode) process.exitCode = exitCode;
+    }).catch(function (err) {
+        console.error('Unhandled error: ' + err.message);
+        process.exitCode = 1;
+    });
 }

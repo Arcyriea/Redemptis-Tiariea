@@ -1,0 +1,237 @@
+{
+  "registrySchemaVersion": "1.0",
+  "assets": [
+    {
+      "assetId": "rt.component.aistiaria.side-hull-angular",
+      "logicalPath": "assets/Components/Aistiaria/01_side_hull_angular.svg",
+      "textureKey": "public-components-aistiaria-01_side_hull_angular",
+      "aliases": ["central-hull"],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.aistiaria.hex-cockpit",
+      "logicalPath": "assets/Components/Aistiaria/02_hex_cockpit.svg",
+      "textureKey": "public-components-aistiaria-02_hex_cockpit",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.aistiaria.side-wing",
+      "logicalPath": "assets/Components/Aistiaria/03_side_wing.svg",
+      "textureKey": "public-components-aistiaria-03_side_wing",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.aistiaria.rear-engine-pod",
+      "logicalPath": "assets/Components/Aistiaria/04_rear_engine_pod.svg",
+      "textureKey": "public-components-aistiaria-04_rear_engine_pod",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.aistiaria.nose-section",
+      "logicalPath": "assets/Components/Aistiaria/05_nose_section.svg",
+      "textureKey": "public-components-aistiaria-05_nose_section",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.aistiaria.swept-wing",
+      "logicalPath": "assets/Components/Aistiaria/06_swept_wing.svg",
+      "textureKey": "public-components-aistiaria-06_swept_wing",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.aistiaria.connector-module",
+      "logicalPath": "assets/Components/Aistiaria/07_connector_module.svg",
+      "textureKey": "public-components-aistiaria-07_connector_module",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.aistiaria.tail-fuselage",
+      "logicalPath": "assets/Components/Aistiaria/08_tail_fuselage.svg",
+      "textureKey": "public-components-aistiaria-08_tail_fuselage",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-1",
+      "logicalPath": "assets/Components/Yutiarin/Part 1.svg",
+      "textureKey": "public-components-yutiarin-part-1",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-10",
+      "logicalPath": "assets/Components/Yutiarin/Part 10.svg",
+      "textureKey": "public-components-yutiarin-part-10",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-2",
+      "logicalPath": "assets/Components/Yutiarin/Part 2.svg",
+      "textureKey": "public-components-yutiarin-part-2",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-3",
+      "logicalPath": "assets/Components/Yutiarin/Part 3.svg",
+      "textureKey": "public-components-yutiarin-part-3",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-4",
+      "logicalPath": "assets/Components/Yutiarin/Part 4.svg",
+      "textureKey": "public-components-yutiarin-part-4",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-5",
+      "logicalPath": "assets/Components/Yutiarin/Part 5.svg",
+      "textureKey": "public-components-yutiarin-part-5",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-6",
+      "logicalPath": "assets/Components/Yutiarin/Part 6.svg",
+      "textureKey": "public-components-yutiarin-part-6",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-7",
+      "logicalPath": "assets/Components/Yutiarin/Part 7.svg",
+      "textureKey": "public-components-yutiarin-part-7",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-8",
+      "logicalPath": "assets/Components/Yutiarin/Part 8.svg",
+      "textureKey": "public-components-yutiarin-part-8",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.part-9",
+      "logicalPath": "assets/Components/Yutiarin/Part 9.svg",
+      "textureKey": "public-components-yutiarin-part-9",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.component.yutiarin.wing-1",
+      "logicalPath": "assets/Components/Yutiarin/Wing 1.svg",
+      "textureKey": "public-components-yutiarin-wing-1",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.ship.yutiarin-kinetic-lance-frigate",
+      "logicalPath": "assets/Ships/Yutiarin Kinetic Lance Frigate.svg",
+      "textureKey": "public-ships-yutiarin-kinetic-lance-frigate",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.alien-interceptor",
+      "logicalPath": "assets/Ships/alien-interceptor.svg",
+      "textureKey": "public-ships-alien-interceptor",
+      "aliases": ["alien-interceptor"],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.alien-leviathan",
+      "logicalPath": "assets/Ships/alien-leviathan.svg",
+      "textureKey": "public-ships-alien-leviathan",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.alien-mothership",
+      "logicalPath": "assets/Ships/alien-mothership.svg",
+      "textureKey": "public-ships-alien-mothership",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.curved-corvette",
+      "logicalPath": "assets/Ships/curved-corvette.svg",
+      "textureKey": "public-ships-curved-corvette",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.faceted-cruiser",
+      "logicalPath": "assets/Ships/faceted-cruiser.svg",
+      "textureKey": "public-ships-faceted-cruiser",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.human-dreadnought",
+      "logicalPath": "assets/Ships/human-dreadnought.svg",
+      "textureKey": "public-ships-human-dreadnought",
+      "aliases": ["human-dreadnought"],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.human-frigate",
+      "logicalPath": "assets/Ships/human-frigate.svg",
+      "textureKey": "public-ships-human-frigate",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.void-dreadnought",
+      "logicalPath": "assets/Ships/void-dreadnought.svg",
+      "textureKey": "public-ships-void-dreadnought",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.yutiarin-starblade-destroyer",
+      "logicalPath": "assets/Ships/yutiarin-starblade-destroyer.svg",
+      "textureKey": "public-ships-yutiarin-starblade-destroyer",
+      "aliases": [],
+      "contentType": "SVG",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.turret.yutiarin-defense-turret",
+      "logicalPath": "assets/Turrets-Platforms/Yutiarin-Defense Turret.svg",
+      "textureKey": "public-turrets-platforms-yutiarin-defense-turret",
+      "aliases": [],
+      "contentType": "SVG"
+    },
+    {
+      "assetId": "rt.turret.yutiarin-perimeter-turret",
+      "logicalPath": "assets/Turrets-Platforms/Yutiarin-Perimeter Turret.svg",
+      "textureKey": "public-turrets-platforms-yutiarin-perimeter-turret",
+      "aliases": [],
+      "contentType": "SVG"
+    }
+  ],
+  "bundles": {
+    "ships1": {
+      "bundleFile": "/assets/Ships/ships.bin"
+    }
+  }
+}

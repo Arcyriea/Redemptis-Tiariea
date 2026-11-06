@@ -1,13 +1,9 @@
+import { readdir, readFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { readdir, readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-const LEGACY_ALIASES = new Map([
-    ['Ships/human-dreadnought.svg', ['human-dreadnought']],
-    ['Ships/alien-interceptor.svg', ['alien-interceptor']],
-    ['Components/Aistiaria/01_side_hull_angular.svg', ['central-hull']]
-]);
+import { ASSETS_LOGICAL_PREFIX } from './asset-roots.mjs';
+import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 
 function comparePaths(left, right) {
     return left < right ? -1 : left > right ? 1 : 0;
@@ -36,7 +32,33 @@ function encodePublicUrl(relativePath) {
     return `/assets/${encodedPath}`;
 }
 
-async function discoverRelativeSvgPaths(assetsRoot) {
+async function discoverRegisteredAssets(projectRoot) {
+    const registry = await readAssetRegistry(projectRoot);
+    const assets = [...registry.assets].sort((left, right) => comparePaths(left.logicalPath, right.logicalPath));
+    for (const asset of assets) {
+        const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
+        try {
+            const sourceStat = await stat(sourcePath);
+            if (!sourceStat.isFile()) {
+                throw new Error('not a file');
+            }
+        } catch (error) {
+            throw new Error(
+                `Missing canonical source for registered asset "${asset.assetId}" at "${asset.logicalPath}": ${error.message}`
+            );
+        }
+    }
+    return assets;
+}
+
+/**
+ * Legacy discovery: walk the explicit `assetsRoot` directory, excluding planets and
+ * raster files, preserving the original ordering and URL-encoding semantics.
+ *
+ * @param {string} assetsRoot - e.g. `path.join(projectRoot, 'public', 'assets')`
+ * @returns {Promise<string[]>}
+ */
+async function discoverRelativeSvgPathsLegacy(assetsRoot) {
     const rootEntries = await readdir(assetsRoot, { withFileTypes: true }).catch((error) => {
         if (error.code === 'ENOENT') {
             throw new Error(`Public assets directory does not exist: ${assetsRoot}`);
@@ -45,8 +67,8 @@ async function discoverRelativeSvgPaths(assetsRoot) {
     });
 
     const files = [];
-    async function walk(directory, relativeDirectory = '', entries) {
-        entries ??= await readdir(directory, { withFileTypes: true });
+    async function walk(directory, relativeDirectory = '') {
+        const entries = await readdir(directory, { withFileTypes: true });
         entries.sort((left, right) => comparePaths(left.name, right.name));
 
         for (const entry of entries) {
@@ -66,7 +88,7 @@ async function discoverRelativeSvgPaths(assetsRoot) {
         }
     }
 
-    await walk(assetsRoot, '', rootEntries);
+    await walk(assetsRoot, '');
     return files.sort(comparePaths);
 }
 
@@ -111,14 +133,29 @@ function resolveTextureKeys(relativePaths) {
     return resolved;
 }
 
-export async function createPublicSvgManifest(assetsRoot) {
-    const relativePaths = await discoverRelativeSvgPaths(assetsRoot);
-    const textureKeys = resolveTextureKeys(relativePaths);
-    const assets = relativePaths.map((relativePath) => ({
-        key: textureKeys.get(relativePath),
-        url: encodePublicUrl(relativePath),
-        aliases: LEGACY_ALIASES.get(relativePath) ?? []
-    }));
+export async function createPublicSvgManifest(assetsRoot, outputFile, projectRoot = PROJECT_ROOT) {
+    let assets;
+    if (assetsRoot) {
+        const relativePaths = await discoverRelativeSvgPathsLegacy(assetsRoot);
+        const textureKeys = resolveTextureKeys(relativePaths);
+        const registry = await readAssetRegistry(projectRoot);
+        const aliasesByPath = new Map(registry.assets.map((asset) => [
+            asset.logicalPath.slice(`${ASSETS_LOGICAL_PREFIX}/`.length),
+            asset.aliases
+        ]));
+        assets = relativePaths.map((relativePath) => ({
+            key: textureKeys.get(relativePath),
+            url: encodePublicUrl(relativePath),
+            aliases: aliasesByPath.get(relativePath) ?? []
+        }));
+    } else {
+        const registeredAssets = await discoverRegisteredAssets(projectRoot);
+        assets = registeredAssets.map((asset) => ({
+            key: asset.textureKey,
+            url: encodePublicUrl(asset.logicalPath.slice(`${ASSETS_LOGICAL_PREFIX}/`.length)),
+            aliases: asset.aliases
+        }));
+    }
 
     const assetByAlias = new Map();
     const keyOwners = new Map(assets.map((asset) => [asset.key.toLowerCase(), asset.key]));
@@ -134,13 +171,11 @@ export async function createPublicSvgManifest(assetsRoot) {
             assetByAlias.set(normalizedAlias, asset.key);
         }
     }
-
     return assets;
 }
 
-export async function generatePublicSvgManifest(assetsRoot, outputFile) {
-    const assets = await createPublicSvgManifest(assetsRoot);
-    const content = [
+export function renderPublicSvgManifest(assets) {
+    return [
         'export interface PublicSvgTexture {',
         '    readonly key: string;',
         '    readonly url: string;',
@@ -151,11 +186,17 @@ export async function generatePublicSvgManifest(assetsRoot, outputFile) {
         `${JSON.stringify(assets, null, 4)};`,
         ''
     ].join('\n');
+}
 
-    await mkdir(path.dirname(outputFile), { recursive: true });
+export async function generatePublicSvgManifest(assetsRoot, outputFile, projectRoot = PROJECT_ROOT) {
+    const assets = await createPublicSvgManifest(assetsRoot, undefined, projectRoot);
+    const content = renderPublicSvgManifest(assets);
+
+    const targetFile = outputFile ?? path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts');
+    await mkdir(path.dirname(targetFile), { recursive: true });
     let existingContent;
     try {
-        existingContent = await readFile(outputFile, 'utf8');
+        existingContent = await readFile(targetFile, 'utf8');
     } catch (error) {
         if (error.code !== 'ENOENT') {
             throw error;
@@ -163,7 +204,7 @@ export async function generatePublicSvgManifest(assetsRoot, outputFile) {
     }
 
     if (existingContent !== content) {
-        await writeFile(outputFile, content, 'utf8');
+        await writeFile(targetFile, content, 'utf8');
     }
 
     console.log(`Discovered ${assets.length} public SVG texture(s).`);
@@ -172,12 +213,10 @@ export async function generatePublicSvgManifest(assetsRoot, outputFile) {
 
 const scriptPath = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
-    const projectRoot = path.resolve(path.dirname(scriptPath), '..');
-    const assetsRoot = path.join(projectRoot, 'public', 'assets');
-    const outputFile = path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts');
-
-    generatePublicSvgManifest(assetsRoot, outputFile).catch((error) => {
-        console.error(`Failed to generate public SVG manifest: ${error.message}`);
+    import('./prepare-assets.mjs')
+        .then(({ prepareAssets }) => prepareAssets())
+        .catch((error) => {
+        console.error(`Failed to prepare assets: ${error.message}`);
         process.exitCode = 1;
     });
 }

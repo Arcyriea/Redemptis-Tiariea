@@ -1,0 +1,108 @@
+{
+  "manifestSchemaVersion": "1.0",
+  "assets": [
+    {
+      "assetId": "rt.ship.alien-interceptor",
+      "logicalPath": "assets/Ships/alien-interceptor.svg",
+      "textureKey": "public-ships-alien-interceptor",
+      "aliases": [
+        "alien-interceptor"
+      ],
+      "contentType": "SVG",
+      "sourceSha256": "4ad596d3d8337fadb3cf66d6cc7b579835539b52659935a39586099ca96b30f2",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.alien-leviathan",
+      "logicalPath": "assets/Ships/alien-leviathan.svg",
+      "textureKey": "public-ships-alien-leviathan",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "e1a489bbbfeb8cc66a4172b34c4a22fac6565cdf2446dd7a4437c2832087686d",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.alien-mothership",
+      "logicalPath": "assets/Ships/alien-mothership.svg",
+      "textureKey": "public-ships-alien-mothership",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "8adfa6b0288fd9626754d6ea766120e6ed558d62370e330648a89c3184049a87",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.curved-corvette",
+      "logicalPath": "assets/Ships/curved-corvette.svg",
+      "textureKey": "public-ships-curved-corvette",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "21d5805e2204bc28be873cf5890024a9fa6adb5bf522e4f7b6e423bcdebf9e6c",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.faceted-cruiser",
+      "logicalPath": "assets/Ships/faceted-cruiser.svg",
+      "textureKey": "public-ships-faceted-cruiser",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "95f73e94890f3729118bd89e9e1205d5110f7c6da3daa5665c7e3a531f4b312f",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.human-dreadnought",
+      "logicalPath": "assets/Ships/human-dreadnought.svg",
+      "textureKey": "public-ships-human-dreadnought",
+      "aliases": [
+        "human-dreadnought"
+      ],
+      "contentType": "SVG",
+      "sourceSha256": "27b77d19908ecd4a4080a79f7a3c9ddd6bb1392f17bd11a8c9acd476a663dec5",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.human-frigate",
+      "logicalPath": "assets/Ships/human-frigate.svg",
+      "textureKey": "public-ships-human-frigate",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "d34b8c71d6e2ae1517f248f7907e1bae5839ad931b4877684e242d89036efd33",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.void-dreadnought",
+      "logicalPath": "assets/Ships/void-dreadnought.svg",
+      "textureKey": "public-ships-void-dreadnought",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "d2dfe8f364b70bacf578bff96b6ca4bdf5def217994ac2768d1ea003f83f3906",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.yutiarin-kinetic-lance-frigate",
+      "logicalPath": "assets/Ships/Yutiarin Kinetic Lance Frigate.svg",
+      "textureKey": "public-ships-yutiarin-kinetic-lance-frigate",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "6e4fec41118c5562f93a41e7b0ee6b0847920f5df75e84a3429c7b2ad24b7782",
+      "bundleId": "ships1"
+    },
+    {
+      "assetId": "rt.ship.yutiarin-starblade-destroyer",
+      "logicalPath": "assets/Ships/yutiarin-starblade-destroyer.svg",
+      "textureKey": "public-ships-yutiarin-starblade-destroyer",
+      "aliases": [],
+      "contentType": "SVG",
+      "sourceSha256": "1d125a5e8f109dd50a77d0ad77f2d96b13c393624c8f16d9d9b6cfb42ad39f35",
+      "bundleId": "ships1"
+    }
+  ],
+  "bundles": [
+    {
+      "bundleId": "ships1",
+      "bundleFile": "/assets/Ships/ships.bin",
+      "formatVersion": "1.0",
+      "assetCount": 10,
+      "bundleSha256": "5a88e030dfbd0cecc8d2b51acf7e80dce2bdb36862838ba0ea113d84707fd65b"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RTAB asset manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestSchemaVersion",
+    "assets",
+    "bundles"
+  ],
+  "properties": {
+    "manifestSchemaVersion": {
+      "const": "1.0"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assetId",
+          "logicalPath",
+          "textureKey",
+          "aliases",
+          "contentType",
+          "sourceSha256",
+          "bundleId"
+        ],
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "logicalPath": {
+            "type": "string",
+            "pattern": "^assets/.+\\.svg$"
+          },
+          "textureKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contentType": {
+            "const": "SVG"
+          },
+          "sourceSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bundleId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "bundles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bundleId",
+          "bundleFile",
+          "formatVersion",
+          "assetCount",
+          "bundleSha256"
+        ],
+        "properties": {
+          "bundleId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bundleFile": {
+            "type": "string",
+            "pattern": "^/assets/.+\\.bin$"
+          },
+          "formatVersion": {
+            "const": "1.0"
+          },
+          "assetCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "bundleSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  }
+}
