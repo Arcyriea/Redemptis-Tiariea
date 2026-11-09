@@ -1,4 +1,4 @@
-import { readdir, readFile, mkdir, stat, writeFile } from 'node:fs/promises';
+import { readdir, readFile, mkdir, lstat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,12 +34,14 @@ function encodePublicUrl(relativePath) {
 
 async function discoverRegisteredAssets(projectRoot) {
     const registry = await readAssetRegistry(projectRoot);
-    const assets = [...registry.assets].sort((left, right) => comparePaths(left.logicalPath, right.logicalPath));
+    const assets = registry.assets
+        .filter((asset) => asset.contentType === 'SVG')
+        .sort((left, right) => comparePaths(left.logicalPath, right.logicalPath));
     for (const asset of assets) {
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
         try {
-            const sourceStat = await stat(sourcePath);
-            if (!sourceStat.isFile()) {
+            const sourceStat = await lstat(sourcePath);
+            if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) {
                 throw new Error('not a file');
             }
         } catch (error) {

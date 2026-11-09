@@ -10,7 +10,7 @@
   ],
   "properties": {
     "manifestSchemaVersion": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "assets": {
       "type": "array",
@@ -33,7 +33,7 @@
           },
           "logicalPath": {
             "type": "string",
-            "pattern": "^assets/.+\\.svg$"
+            "pattern": "^assets/.+\\.(svg|png)$"
           },
           "textureKey": {
             "type": "string",
@@ -46,7 +46,10 @@
             }
           },
           "contentType": {
-            "const": "SVG"
+            "enum": [
+              "SVG",
+              "PNG"
+            ]
           },
           "sourceSha256": {
             "type": "string",

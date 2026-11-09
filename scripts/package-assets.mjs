@@ -1,9 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import saxes from 'saxes';
 import { fileURLToPath } from 'node:url';
 import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
+import { assertPngAggregateDecodedLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
 
 const HEADER_SIZE = 64;
 const INDEX_HEADER_SIZE = 28;
@@ -14,6 +15,8 @@ const HEADER_FLAGS = 0x0003;
 const UINT32_MAX = 0xffffffffn;
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const CONTENT_TYPE_CODES = Object.freeze({ SVG: 0, PNG: 1 });
+const MAX_AGGREGATE_PNG_BYTES = PNG_LIMITS.maxAggregateFileBytes;
 
 function sha256(bytes) {
     return createHash('sha256').update(bytes).digest();
@@ -148,7 +151,7 @@ function createBundle(bundleId, bundleFile, assets) {
         indexBuffer.writeBigUInt64LE(nextPayloadOffset, recordStart + 8);
         indexBuffer.writeBigUInt64LE(payloadSize, recordStart + 16);
         indexBuffer.writeBigUInt64LE(payloadSize, recordStart + 24);
-        indexBuffer.writeUInt16LE(0, recordStart + 32);
+        indexBuffer.writeUInt16LE(CONTENT_TYPE_CODES[asset.contentType], recordStart + 32);
         indexBuffer.writeUInt16LE(0, recordStart + 34);
         indexBuffer.writeUInt32LE(0, recordStart + 36);
         sha256(asset.bytes).copy(indexBuffer, recordStart + 40);
@@ -193,7 +196,7 @@ function buildManifestSchema() {
         additionalProperties: false,
         required: ['manifestSchemaVersion', 'assets', 'bundles'],
         properties: {
-            manifestSchemaVersion: { const: '1.0' },
+            manifestSchemaVersion: { const: '1.1' },
             assets: {
                 type: 'array',
                 items: {
@@ -202,10 +205,10 @@ function buildManifestSchema() {
                     required: ['assetId', 'logicalPath', 'textureKey', 'aliases', 'contentType', 'sourceSha256', 'bundleId'],
                     properties: {
                         assetId: { type: 'string', minLength: 1 },
-                        logicalPath: { type: 'string', pattern: '^assets/.+\\.svg$' },
+                        logicalPath: { type: 'string', pattern: '^assets/.+\\.(svg|png)$' },
                         textureKey: { type: 'string', minLength: 1 },
                         aliases: { type: 'array', items: { type: 'string' } },
-                        contentType: { const: 'SVG' },
+                        contentType: { enum: ['SVG', 'PNG'] },
                         sourceSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
                         bundleId: { type: 'string', minLength: 1 }
                     }
@@ -243,37 +246,165 @@ function safeBundlePath(projectRoot, bundleFile) {
     return outputPath;
 }
 
+async function readCommittedOutput(filePath, label, encoding) {
+    let info;
+    try {
+        info = await lstat(filePath);
+    } catch (error) {
+        throw new Error(`${label} is unavailable at ${filePath}: ${error.message}`);
+    }
+    if (info.isSymbolicLink() || !info.isFile()) {
+        throw new Error(`${label} is not a regular file: ${filePath}`);
+    }
+    const bytes = await readFile(filePath);
+    if (bytes.length !== info.size) {
+        throw new Error(`${label} changed while being read: ${filePath}`);
+    }
+    return encoding ? bytes.toString(encoding) : bytes;
+}
+
+function normalizeCategoryName(name) {
+    if (!/^[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*$/.test(name)) {
+        throw new Error(`Unsafe asset category directory name "${name}"; category names must be ASCII letters, digits, spaces, underscores, or hyphens`);
+    }
+    return name.toLowerCase().split(/[ _-]+/).filter(Boolean).join('-');
+}
+
+async function readSafeDirectory(directory) {
+    const directoryStat = await lstat(directory);
+    if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+        throw new Error(`Asset source entry is not a real directory: ${directory}`);
+    }
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+    for (const entry of entries) {
+        const entryPath = path.join(directory, entry.name);
+        const info = await lstat(entryPath);
+        if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile())) {
+            throw new Error(`Asset source entry must be a regular file or directory, not a link or special file: ${entryPath}`);
+        }
+    }
+    return entries;
+}
+
+async function discoverCategoryAssets(projectRoot, registry) {
+    const privateRoot = path.join(projectRoot, 'private');
+    const assetsRoot = path.join(projectRoot, 'private', 'assets');
+    const privateInfo = await lstat(privateRoot);
+    if (privateInfo.isSymbolicLink() || !privateInfo.isDirectory()) {
+        throw new Error(`Private source root is not a real directory: ${privateRoot}`);
+    }
+    const rootEntries = await readSafeDirectory(assetsRoot);
+    const registeredByPath = new Map(registry.assets.map((asset) => [asset.logicalPath, asset]));
+    const registeredByLowerPath = new Map(registry.assets.map((asset) => [asset.logicalPath.toLowerCase(), asset.logicalPath]));
+    const normalizedCategories = new Map();
+    const discoveredByPath = new Map();
+    const categories = [];
+
+    for (const entry of rootEntries) {
+        if (!entry.isDirectory()) {
+            throw new Error(`Asset files must be inside a top-level category directory: ${path.join(assetsRoot, entry.name)}`);
+        }
+        const bundleId = normalizeCategoryName(entry.name);
+        const priorCategory = normalizedCategories.get(bundleId);
+        if (priorCategory) {
+            throw new Error(`Asset category names "${priorCategory}" and "${entry.name}" collide after normalization to "${bundleId}"`);
+        }
+        normalizedCategories.set(bundleId, entry.name);
+
+        const category = { name: entry.name, bundleId, assets: [] };
+        async function walk(directory, relativeDirectory) {
+            for (const child of await readSafeDirectory(directory)) {
+                const childRelative = `${relativeDirectory}/${child.name}`;
+                const childPath = path.join(directory, child.name);
+                if (child.isDirectory()) {
+                    await walk(childPath, childRelative);
+                    continue;
+                }
+
+                const logicalPath = `assets/${entry.name}${childRelative}`;
+                const registered = registeredByPath.get(logicalPath);
+                if (!registered) {
+                    const caseVariant = registeredByLowerPath.get(logicalPath.toLowerCase());
+                    if (caseVariant) {
+                        throw new Error(`Asset source path casing differs from registry: expected "${caseVariant}", found "${logicalPath}"`);
+                    }
+                    throw new Error(`Unregistered asset source file: ${logicalPath}`);
+                }
+                discoveredByPath.set(logicalPath, registered);
+                category.assets.push(registered);
+            }
+        }
+        await walk(path.join(assetsRoot, entry.name), '');
+        if (category.assets.length > 0) {
+            categories.push(category);
+        }
+    }
+
+    for (const asset of registry.assets) {
+        const relative = asset.logicalPath.slice('assets/'.length);
+        if (!relative.includes('/')) {
+            throw new Error(`Registered asset must be inside a top-level category directory: ${asset.logicalPath}`);
+        }
+        if (!discoveredByPath.has(asset.logicalPath)) {
+            throw new Error(`Fatal: could not find canonical source for asset ${asset.assetId}: ${asset.logicalPath}`);
+        }
+    }
+    return { assetsRoot, categories };
+}
+
 async function loadValidatedInputs(projectRoot, registry) {
     const validatedAssets = [];
+    let aggregatePngBytes = 0;
+    let aggregatePngPixelBytes = 0;
+    let aggregatePngScanlineBytes = 0;
     for (const asset of registry.assets) {
-        if (asset.contentType !== 'SVG') {
+        if (!Object.hasOwn(CONTENT_TYPE_CODES, asset.contentType)) {
             throw new Error(`Fatal: unsupported content type ${asset.contentType} for asset ${asset.assetId}`);
         }
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
         let fileStat;
         try {
-            fileStat = await stat(sourcePath, { bigint: true });
+            fileStat = await lstat(sourcePath, { bigint: true });
         } catch (error) {
             throw new Error(`Fatal: could not find canonical source for asset ${asset.assetId}: ${asset.logicalPath} (${error.message})`);
         }
-        if (!fileStat.isFile()) {
+        if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
             throw new Error(`Fatal: canonical source for asset ${asset.assetId} is not a file: ${asset.logicalPath}`);
         }
         if (fileStat.size === 0n) {
             throw new Error(`Fatal: asset ${asset.logicalPath} is a zero-byte file`);
         }
-        if (fileStat.size > UINT32_MAX) {
-            throw new Error(`Fatal: asset ${asset.logicalPath} exceeds the v1 maximum size of ${UINT32_MAX} bytes`);
+        const maxFileSize = asset.contentType === 'PNG' ? BigInt(PNG_LIMITS.maxFileBytes) : UINT32_MAX;
+        if (fileStat.size > maxFileSize) {
+            throw new Error(`Fatal: asset ${asset.logicalPath} exceeds the maximum size for ${asset.contentType} (${maxFileSize} bytes)`);
         }
         const bytes = await readFile(sourcePath);
         if (BigInt(bytes.length) !== fileStat.size) {
             throw new Error(`Fatal: canonical source changed while reading asset ${asset.logicalPath}`);
         }
-        decodeSvg(bytes, asset);
+        let pngMetrics = null;
+        if (asset.contentType === 'SVG') {
+            decodeSvg(bytes, asset);
+        } else {
+            aggregatePngBytes += bytes.length;
+            if (aggregatePngBytes > MAX_AGGREGATE_PNG_BYTES) {
+                throw new Error(`Fatal: aggregate PNG source size exceeds ${MAX_AGGREGATE_PNG_BYTES} bytes`);
+            }
+            pngMetrics = await validatePng(bytes, asset);
+            aggregatePngPixelBytes += pngMetrics.decodedPixelBytes;
+            aggregatePngScanlineBytes += pngMetrics.scanlineBytes;
+            assertPngAggregateDecodedLimits(
+                aggregatePngPixelBytes,
+                aggregatePngScanlineBytes,
+                'Fatal: aggregate PNG assets'
+            );
+        }
         validatedAssets.push({
             ...asset,
             bytes,
-            sourceSha256: sha256Hex(bytes)
+            sourceSha256: sha256Hex(bytes),
+            pngMetrics
         });
     }
     return validatedAssets;
@@ -281,18 +412,23 @@ async function loadValidatedInputs(projectRoot, registry) {
 
 export async function createAssetPackageOutputs({ projectRoot = PROJECT_ROOT } = {}) {
     const registry = await readAssetRegistry(projectRoot);
+    const { categories } = await discoverCategoryAssets(projectRoot, registry);
     const validatedAssets = await loadValidatedInputs(projectRoot, registry);
     const outputFiles = new Map();
     const manifestAssets = [];
     const manifestBundles = [];
 
-    for (const [bundleId, bundle] of Object.entries(registry.bundles)) {
-        const members = validatedAssets.filter((asset) => asset.bundleId === bundleId);
-        const bundleResult = createBundle(bundleId, bundle.bundleFile, members);
-        outputFiles.set(safeBundlePath(projectRoot, bundle.bundleFile), bundleResult.bytes);
+    for (const category of categories) {
+        const bundleId = category.bundleId;
+        const bundleFile = `/assets/${bundleId}.bin`;
+        const members = category.assets.map((asset) => (
+            validatedAssets.find((validated) => validated.assetId === asset.assetId)
+        ));
+        const bundleResult = createBundle(bundleId, bundleFile, members);
+        outputFiles.set(safeBundlePath(projectRoot, bundleFile), bundleResult.bytes);
         manifestBundles.push({
             bundleId,
-            bundleFile: bundle.bundleFile,
+            bundleFile,
             formatVersion: '1.0',
             assetCount: members.length,
             bundleSha256: bundleResult.bundleSha256
@@ -305,13 +441,13 @@ export async function createAssetPackageOutputs({ projectRoot = PROJECT_ROOT } =
                 aliases: asset.aliases,
                 contentType: asset.contentType,
                 sourceSha256: asset.sourceSha256,
-                bundleId
+                bundleId: category.bundleId
             });
         }
     }
 
     const manifest = {
-        manifestSchemaVersion: '1.0',
+        manifestSchemaVersion: '1.1',
         assets: manifestAssets.sort((left, right) => left.assetId.localeCompare(right.assetId)),
         bundles: manifestBundles.sort((left, right) => left.bundleId.localeCompare(right.bundleId))
     };
@@ -328,11 +464,11 @@ export async function createAssetPackageOutputs({ projectRoot = PROJECT_ROOT } =
         assertDigest(sha256(bundleBytes), Buffer.from(bundle.bundleSha256, 'hex'), `Generated bundle "${bundle.bundleId}"`);
         const expectedAssets = manifest.assets
             .filter((asset) => asset.bundleId === bundle.bundleId)
-            .map((asset) => ({ assetId: asset.assetId }))
+            .map((asset) => ({ assetId: asset.assetId, contentType: asset.contentType, logicalPath: asset.logicalPath }))
             .sort((left, right) => (
                 left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0
             ));
-        validateRtabBundle(bundleBytes, bundle, expectedAssets);
+        await validateRtabBundle(bundleBytes, bundle, expectedAssets);
     }
 
     return { registry, manifest, outputFiles };
@@ -356,7 +492,7 @@ function readUInt64(buffer, offset, label) {
     return value;
 }
 
-export function validateRtabBundle(bytes, bundle, expectedAssets) {
+export async function validateRtabBundle(bytes, bundle, expectedAssets) {
     if (!Buffer.isBuffer(bytes) || bytes.length < HEADER_SIZE) {
         throw new Error(`RTAB bundle "${bundle.bundleId}" is shorter than its ${HEADER_SIZE}-byte header`);
     }
@@ -439,6 +575,9 @@ export function validateRtabBundle(bytes, bundle, expectedAssets) {
     let expectedStringOffsetCursor = 0n;
     let expectedPayloadOffset = 0n;
     let previousId = null;
+    let aggregatePngBytes = 0;
+    let aggregatePngPixelBytes = 0;
+    let aggregatePngScanlineBytes = 0;
 
     for (let recordIndex = 0; recordIndex < entryCount; recordIndex += 1) {
         const recordOffset = INDEX_HEADER_SIZE + recordIndex * RECORD_SIZE;
@@ -455,7 +594,9 @@ export function validateRtabBundle(bytes, bundle, expectedAssets) {
         if (idOffset !== expectedStringOffsetCursor || idOffset + idLength > stringTableSizeBig) {
             throw new Error('RTAB asset ID string ranges must be contiguous and within the string table');
         }
-        if (contentType !== 0) {
+        const contentTypeName = Object.entries(CONTENT_TYPE_CODES)
+            .find(([, code]) => code === contentType)?.[0];
+        if (!contentTypeName) {
             throw new Error(`Unsupported RTAB content type ${contentType}`);
         }
         if (compressionMethod !== 0) {
@@ -465,7 +606,7 @@ export function validateRtabBundle(bytes, bundle, expectedAssets) {
             throw new Error('RTAB record flags must be zero');
         }
         if (storedSize === 0n || storedSize !== originalSize || storedSize > UINT32_MAX) {
-            throw new Error('RTAB SVG payload size is invalid');
+            throw new Error('RTAB payload size is invalid');
         }
         if (assetPayloadOffset !== expectedPayloadOffset) {
             throw new Error('RTAB payload records must be contiguous and ordered');
@@ -497,8 +638,39 @@ export function validateRtabBundle(bytes, bundle, expectedAssets) {
         const expectedPayloadHash = index.subarray(recordOffset + 40, recordOffset + 72);
         assertDigest(sha256(assetPayload), expectedPayloadHash, `Payload for "${assetId}"`);
         const expectedAsset = expectedAssets.find((asset) => asset.assetId === assetId);
-        decodeSvg(assetPayload, expectedAsset ?? { logicalPath: assetId });
-        records.push({ assetId, bytes: assetPayload });
+        if (!expectedAsset) {
+            throw new Error(`RTAB asset "${assetId}" has no matching manifest metadata`);
+        }
+        if (expectedAsset.contentType !== contentTypeName) {
+            throw new Error(`RTAB content type for "${assetId}" does not match manifest content type "${expectedAsset.contentType}"`);
+        }
+        let decodedPixelBytes = 0;
+        let scanlineBytes = 0;
+        if (contentTypeName === 'SVG') {
+            decodeSvg(assetPayload, expectedAsset);
+        } else {
+            const pngMetrics = await validatePng(assetPayload, expectedAsset);
+            decodedPixelBytes = pngMetrics.decodedPixelBytes;
+            scanlineBytes = pngMetrics.scanlineBytes;
+            aggregatePngBytes += assetPayload.length;
+            aggregatePngPixelBytes += pngMetrics.decodedPixelBytes;
+            aggregatePngScanlineBytes += pngMetrics.scanlineBytes;
+            if (aggregatePngBytes > MAX_AGGREGATE_PNG_BYTES) {
+                throw new Error(`RTAB bundle "${bundle.bundleId}" exceeds the aggregate PNG source size limit`);
+            }
+            assertPngAggregateDecodedLimits(
+                aggregatePngPixelBytes,
+                aggregatePngScanlineBytes,
+                `RTAB bundle "${bundle.bundleId}"`
+            );
+        }
+        records.push({
+            assetId,
+            bytes: assetPayload,
+            contentType: contentTypeName,
+            decodedPixelBytes,
+            scanlineBytes
+        });
         expectedStringOffsetCursor += idLength;
         expectedPayloadOffset += storedSize;
     }
@@ -525,18 +697,34 @@ function assertOnlyKeys(value, expectedKeys, label) {
 }
 
 function validateManifest(manifest, registry) {
-    if (!manifest || manifest.manifestSchemaVersion !== '1.0'
+    if (!manifest || manifest.manifestSchemaVersion !== '1.1'
         || !Array.isArray(manifest.assets) || !Array.isArray(manifest.bundles)) {
         throw new Error('RTAB asset manifest has an invalid shape or manifestSchemaVersion');
     }
     assertOnlyKeys(manifest, ['manifestSchemaVersion', 'assets', 'bundles'], 'RTAB asset manifest');
 
-    const expectedAssets = registry.assets.filter((asset) => asset.bundleId);
-    if (manifest.assets.length !== expectedAssets.length) {
-        throw new Error('RTAB asset manifest does not contain exactly the currently packaged assets');
+    const expectedBundleByAssetId = new Map();
+    const expectedBundles = new Map();
+    for (const asset of registry.assets) {
+        const categoryName = asset.logicalPath.split('/')[1];
+        const bundleId = normalizeCategoryName(categoryName);
+        const bundleFile = `/assets/${bundleId}.bin`;
+        expectedBundleByAssetId.set(asset.assetId, bundleId);
+        expectedBundles.set(bundleId, {
+            bundleId,
+            bundleFile,
+            assets: [...(expectedBundles.get(bundleId)?.assets ?? []), asset]
+        });
     }
+    if (manifest.assets.length !== registry.assets.length) {
+        throw new Error('RTAB asset manifest does not contain exactly the registered assets');
+    }
+
     const manifestAssetsById = new Map(manifest.assets.map((asset) => [asset.assetId, asset]));
-    for (const expected of expectedAssets) {
+    if (manifestAssetsById.size !== manifest.assets.length) {
+        throw new Error('RTAB asset manifest contains duplicate asset IDs');
+    }
+    for (const expected of registry.assets) {
         const actual = manifestAssetsById.get(expected.assetId);
         assertOnlyKeys(
             actual,
@@ -546,28 +734,31 @@ function validateManifest(manifest, registry) {
         if (!actual || actual.logicalPath !== expected.logicalPath
             || actual.textureKey !== expected.textureKey
             || actual.contentType !== expected.contentType
-            || actual.bundleId !== expected.bundleId
+            || actual.bundleId !== expectedBundleByAssetId.get(expected.assetId)
             || JSON.stringify(actual.aliases) !== JSON.stringify(expected.aliases)) {
             throw new Error(`RTAB manifest metadata does not match registry asset "${expected.assetId}"`);
         }
         assertHexDigest(actual.sourceSha256, `source for "${expected.assetId}"`);
     }
 
-    if (manifest.bundles.length !== Object.keys(registry.bundles).length) {
-        throw new Error('RTAB manifest does not contain exactly the declared bundles');
+    if (manifest.bundles.length !== expectedBundles.size) {
+        throw new Error('RTAB manifest does not contain exactly the non-empty source categories');
     }
-    for (const [bundleId, expected] of Object.entries(registry.bundles)) {
+    const manifestBundlesById = new Map(manifest.bundles.map((bundle) => [bundle.bundleId, bundle]));
+    if (manifestBundlesById.size !== manifest.bundles.length) {
+        throw new Error('RTAB asset manifest contains duplicate bundle IDs');
+    }
+    for (const [bundleId, expected] of expectedBundles) {
         const actual = manifest.bundles.find((bundle) => bundle.bundleId === bundleId);
         assertOnlyKeys(
             actual,
             ['bundleId', 'bundleFile', 'formatVersion', 'assetCount', 'bundleSha256'],
             `RTAB manifest bundle "${bundleId}"`
         );
-        const members = expectedAssets.filter((asset) => asset.bundleId === bundleId);
         if (!actual || actual.bundleFile !== expected.bundleFile
             || actual.formatVersion !== '1.0'
-            || actual.assetCount !== members.length) {
-            throw new Error(`RTAB manifest bundle metadata does not match registry bundle "${bundleId}"`);
+            || actual.assetCount !== expected.assets.length) {
+            throw new Error(`RTAB manifest bundle metadata does not match derived category "${bundleId}"`);
         }
         assertHexDigest(actual.bundleSha256, `bundle "${bundleId}"`);
     }
@@ -580,34 +771,56 @@ export async function validateCommittedAssetOutputs({ projectRoot = PROJECT_ROOT
     let schema;
     try {
         [manifest, schema] = await Promise.all([
-            readFile(path.join(assetsRoot, 'asset-manifest.json'), 'utf8').then(JSON.parse),
-            readFile(path.join(assetsRoot, 'asset-manifest-schema.json'), 'utf8').then(JSON.parse)
+            readCommittedOutput(path.join(assetsRoot, 'asset-manifest.json'), 'RTAB manifest', 'utf8').then(JSON.parse),
+            readCommittedOutput(path.join(assetsRoot, 'asset-manifest-schema.json'), 'RTAB schema', 'utf8').then(JSON.parse)
         ]);
     } catch (error) {
         throw new Error(`Could not read committed RTAB manifest/schema: ${error.message}`);
     }
     validateManifest(manifest, registry);
     if (JSON.stringify(schema) !== JSON.stringify(buildManifestSchema())) {
-        throw new Error('RTAB asset manifest schema does not match the v1.0 schema');
+        throw new Error('RTAB asset manifest schema does not match the 1.1 manifest schema');
     }
 
     const validatedBundles = [];
+    let aggregatePngBytes = 0;
+    let aggregatePngPixelBytes = 0;
+    let aggregatePngScanlineBytes = 0;
     for (const bundle of manifest.bundles) {
         const bundlePath = safeBundlePath(projectRoot, bundle.bundleFile);
         let bytes;
         try {
-            bytes = await readFile(bundlePath);
+            bytes = await readCommittedOutput(bundlePath, `RTAB bundle "${bundle.bundleId}"`);
         } catch (error) {
             throw new Error(`Required RTAB bundle "${bundle.bundleId}" is unavailable at ${bundle.bundleFile}: ${error.message}`);
         }
         assertDigest(sha256(bytes), Buffer.from(bundle.bundleSha256, 'hex'), `Bundle "${bundle.bundleId}"`);
         const expectedAssets = manifest.assets
             .filter((asset) => asset.bundleId === bundle.bundleId)
-            .map((asset) => ({ assetId: asset.assetId }))
+            .map((asset) => ({
+                assetId: asset.assetId,
+                contentType: asset.contentType,
+                logicalPath: asset.logicalPath
+            }))
             .sort((left, right) => (
                 left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0
             ));
-        validateRtabBundle(bytes, bundle, expectedAssets);
+        const records = await validateRtabBundle(bytes, bundle, expectedAssets);
+        for (const record of records) {
+            if (record.contentType === 'PNG') {
+                aggregatePngBytes += record.bytes.length;
+                aggregatePngPixelBytes += record.decodedPixelBytes;
+                aggregatePngScanlineBytes += record.scanlineBytes;
+            }
+        }
+        if (aggregatePngBytes > MAX_AGGREGATE_PNG_BYTES) {
+            throw new Error(`Committed RTAB outputs exceed the aggregate PNG source size limit`);
+        }
+        assertPngAggregateDecodedLimits(
+            aggregatePngPixelBytes,
+            aggregatePngScanlineBytes,
+            'Committed RTAB outputs'
+        );
         validatedBundles.push(bundle.bundleId);
     }
     return { manifest, validatedBundles };
