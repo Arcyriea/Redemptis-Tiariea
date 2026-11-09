@@ -10,7 +10,7 @@
   ],
   "properties": {
     "manifestSchemaVersion": {
-      "const": "1.1"
+      "const": "1.2"
     },
     "assets": {
       "type": "array",
@@ -84,7 +84,10 @@
             "pattern": "^/assets/.+\\.bin$"
           },
           "formatVersion": {
-            "const": "1.0"
+            "enum": [
+              "1.0",
+              "1.1"
+            ]
           },
           "assetCount": {
             "type": "integer",

@@ -6,12 +6,10 @@ import path from 'node:path';
 import { hostname } from 'node:os';
 import { test } from 'node:test';
 import { publishAssetOutputs, withAssetOutputLock } from '../scripts/asset-output-publisher.mjs';
-import { createAssetPackageOutputs } from '../scripts/package-assets.mjs';
+import { createAssetPackageOutputs, validateCommittedAssetOutputs } from '../scripts/package-assets.mjs';
 import { prepareAssets } from '../scripts/prepare-assets.mjs';
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..');
-const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>';
-
 function hash(bytes: Buffer) {
     return createHash('sha256').update(bytes).digest('hex');
 }
@@ -47,6 +45,79 @@ function journalOutput(projectRoot: string, destination: string, prior: Buffer, 
     };
 }
 
+async function writePlanetReplacementRecoveryJournal(
+    projectRoot: string,
+    { committed = false, removeDestination = false } = {}
+) {
+    const assetsRoot = path.join(projectRoot, 'public', 'assets');
+    const manifest = JSON.parse(await readFile(path.join(assetsRoot, 'asset-manifest.json'), 'utf8'));
+    const transactionId = randomUUID();
+    const planetPath = path.join(assetsRoot, 'planets.bin');
+    const currentPlanet = await readFile(planetPath);
+    const priorPlanet = committed ? Buffer.from('previous transaction-owned planet bundle') : currentPlanet;
+    const nextPlanet = committed ? currentPlanet : Buffer.from(currentPlanet);
+    if (!committed) {
+        nextPlanet[nextPlanet.length - 1] ^= 0xff;
+    }
+    const outputs = [];
+    for (const destination of [
+        ...manifest.bundles.map((bundle: any) => path.join(projectRoot, 'public', bundle.bundleFile.slice(1))),
+        path.join(assetsRoot, 'asset-manifest.json'),
+        path.join(assetsRoot, 'asset-manifest-schema.json'),
+        path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts')
+    ]) {
+        if (destination === planetPath) {
+            const temporary = `${destination}.rtab-${transactionId}.tmp`;
+            const backup = `${destination}.rtab-${transactionId}.bak`;
+            await writeFile(backup, priorPlanet);
+            await writeFile(temporary, nextPlanet);
+            if (committed) {
+                await rm(temporary);
+            } else if (removeDestination) {
+                await rm(destination);
+            } else {
+                await writeFile(destination, nextPlanet);
+                await rm(temporary);
+            }
+            outputs.push({
+                destination: relative(projectRoot, destination),
+                priorExists: true,
+                priorSha256: hash(priorPlanet),
+                temporary: relative(projectRoot, temporary),
+                backup: relative(projectRoot, backup),
+                newSha256: hash(nextPlanet),
+                unchanged: false
+            });
+        } else {
+            const bytes = await readFile(destination);
+            const digest = hash(bytes);
+            outputs.push({
+                destination: relative(projectRoot, destination),
+                priorExists: true,
+                priorSha256: digest,
+                temporary: null,
+                backup: null,
+                newSha256: digest,
+                unchanged: true
+            });
+        }
+    }
+
+    const records: Record<string, unknown>[] = [
+        { type: 'begin', transactionId, sequence: 0, state: 'preparing', outputs, staleOutputs: [] },
+        { type: 'state', transactionId, sequence: 1, from: 'preparing', to: 'staging' },
+        { type: 'state', transactionId, sequence: 2, from: 'staging', to: 'publishing' }
+    ];
+    if (committed) {
+        records.push(
+            { type: 'state', transactionId, sequence: 3, from: 'publishing', to: 'validating' },
+            { type: 'state', transactionId, sequence: 4, from: 'validating', to: 'committed', manifestCommitted: true }
+        );
+    }
+    await writeJournalRecords(projectRoot, records);
+    return { planetPath, priorPlanet };
+}
+
 async function createFixture(run: (projectRoot: string) => Promise<void>) {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'asset-output-recovery-'));
     const registry = JSON.parse(await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'asset-registry.json'), 'utf8'));
@@ -60,9 +131,7 @@ async function createFixture(run: (projectRoot: string) => Promise<void>) {
         const logicalPath = asset.logicalPath.slice('assets/'.length).split('/').join(path.sep);
         const privatePath = path.join(projectRoot, 'private', 'assets', logicalPath);
         await mkdir(path.dirname(privatePath), { recursive: true });
-        const bytes = asset.contentType === 'SVG'
-            ? Buffer.from(SVG)
-            : await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', logicalPath));
+        const bytes = await readFile(path.join(REPOSITORY_ROOT, 'private', 'assets', logicalPath));
         await writeFile(privatePath, bytes);
     }
 
@@ -379,6 +448,60 @@ test('a committed output set is verified before stale-output retirement and back
         await assert.rejects(lstat(path.join(projectRoot, 'private', '.asset-package-transaction.jsonl')), { code: 'ENOENT' });
         const committed = await prepareAssets({ projectRoot });
         assert.equal(committed.mode, 'package');
+    });
+});
+
+test('recovery completes a committed required planets.bin replacement before backup cleanup', async () => {
+    await createFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const unrelatedPath = path.join(projectRoot, 'public', 'assets', 'operator-note.txt');
+        const unrelated = Buffer.from('must remain untouched');
+        await writeFile(unrelatedPath, unrelated);
+        const { planetPath } = await writePlanetReplacementRecoveryJournal(projectRoot, { committed: true });
+
+        await withAssetOutputLock(projectRoot, async () => {});
+
+        const result = await validateCommittedAssetOutputs({ projectRoot });
+        assert.deepEqual(result.validatedBundles, ['components', 'planets', 'ships', 'turrets-platforms']);
+        await assert.doesNotReject(lstat(planetPath));
+        assert.deepEqual(await readFile(unrelatedPath), unrelated);
+        await assert.rejects(
+            lstat(path.join(projectRoot, 'private', '.asset-package-transaction.jsonl')),
+            { code: 'ENOENT' }
+        );
+        for (const outputRoot of [
+            path.join(projectRoot, 'public', 'assets'),
+            path.join(projectRoot, 'src', 'generated')
+        ]) {
+            assert.equal((await readdir(outputRoot)).some((name) => /\.rtab-[0-9a-f-]+\.(?:tmp|bak)$/.test(name)), false);
+        }
+    });
+});
+
+test('recovery restores planets.bin after an interrupted replacement removed the destination', async () => {
+    await createFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const unrelatedPath = path.join(projectRoot, 'public', 'assets', 'operator-note.txt');
+        const unrelated = Buffer.from('must remain untouched');
+        await writeFile(unrelatedPath, unrelated);
+        const { planetPath, priorPlanet } = await writePlanetReplacementRecoveryJournal(projectRoot, { removeDestination: true });
+
+        await withAssetOutputLock(projectRoot, async () => {});
+
+        const result = await validateCommittedAssetOutputs({ projectRoot });
+        assert.deepEqual(result.validatedBundles, ['components', 'planets', 'ships', 'turrets-platforms']);
+        assert.deepEqual(await readFile(planetPath), priorPlanet);
+        assert.deepEqual(await readFile(unrelatedPath), unrelated);
+        await assert.rejects(
+            lstat(path.join(projectRoot, 'private', '.asset-package-transaction.jsonl')),
+            { code: 'ENOENT' }
+        );
+        for (const outputRoot of [
+            path.join(projectRoot, 'public', 'assets'),
+            path.join(projectRoot, 'src', 'generated')
+        ]) {
+            assert.equal((await readdir(outputRoot)).some((name) => /\.rtab-[0-9a-f-]+\.(?:tmp|bak)$/.test(name)), false);
+        }
     });
 });
 

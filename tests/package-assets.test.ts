@@ -23,9 +23,27 @@ import { prepareAssets } from '../scripts/prepare-assets.mjs';
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..');
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>';
 const PLANET_ASSETS = [
-    ['rt.planet-map.map-111', 'assets/Planets/Map-111.png', 'planetMap111'],
-    ['rt.planet-map.map-122', 'assets/Planets/Map-122.png', 'planetMap122'],
-    ['rt.planet-map.map-692', 'assets/Planets/Map-692.png', 'planetMap692']
+    {
+        assetId: 'rt.planet-map.map-111',
+        fileName: 'Map-111.png',
+        logicalPath: 'assets/Planets/Map-111.png',
+        textureKey: 'planetMap111',
+        sourceSha256: '83d39b7a7603f574f47cee57c4d9b12b0b468b469fece0ffe7765d921f067ea1'
+    },
+    {
+        assetId: 'rt.planet-map.map-122',
+        fileName: 'Map-122.png',
+        logicalPath: 'assets/Planets/Map-122.png',
+        textureKey: 'planetMap122',
+        sourceSha256: '35f8af626f4d7162a2926ef3dad6cdec36610cfd6f3acac86a1547d764081f7e'
+    },
+    {
+        assetId: 'rt.planet-map.map-692',
+        fileName: 'Map-692.png',
+        logicalPath: 'assets/Planets/Map-692.png',
+        textureKey: 'planetMap692',
+        sourceSha256: '43652c4465b35a1e3ae4bf99bbb75308359179c9d1b3fd8711d38c806b1472a8'
+    }
 ];
 
 type RegistryAsset = {
@@ -120,13 +138,23 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     for (const asset of registry.assets) {
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
         await mkdir(path.dirname(sourcePath), { recursive: true });
-        await writeFile(sourcePath, asset.contentType === 'SVG' ? SVG : createPng());
+        const source = await readFile(path.join(REPOSITORY_ROOT, 'private', ...asset.logicalPath.split('/')));
+        await writeFile(sourcePath, source);
 
         if (asset.logicalPath.startsWith('assets/Ships/')) {
             const stalePublicCopy = path.join(projectRoot, 'public', ...asset.logicalPath.split('/'));
             await mkdir(path.dirname(stalePublicCopy), { recursive: true });
             await writeFile(stalePublicCopy, '<svg xmlns="http://www.w3.org/2000/svg"><text>stale</text></svg>');
         }
+    }
+    const privatePlanetRoot = path.join(projectRoot, 'private', 'assets', 'Planets');
+    const publicPlanetRoot = path.join(projectRoot, 'public', 'assets', 'Planets');
+    await mkdir(privatePlanetRoot, { recursive: true });
+    await mkdir(publicPlanetRoot, { recursive: true });
+    for (const asset of PLANET_ASSETS) {
+        const source = await readFile(path.join(REPOSITORY_ROOT, 'private', ...asset.logicalPath.split('/')));
+        await writeFile(path.join(privatePlanetRoot, asset.fileName), source);
+        await writeFile(path.join(publicPlanetRoot, asset.fileName), source);
     }
 
     try {
@@ -148,7 +176,13 @@ async function snapshotOutputs(projectRoot: string) {
     ];
     const snapshots = new Map<string, Buffer>();
     for (const filePath of paths) {
-        snapshots.set(filePath, await readFile(filePath));
+        try {
+            snapshots.set(filePath, await readFile(filePath));
+        } catch (error: any) {
+            if (error.code !== 'ENOENT' || !filePath.endsWith('planets.bin')) {
+                throw error;
+            }
+        }
     }
     return snapshots;
 }
@@ -170,34 +204,106 @@ function manifestExpectedAssets(manifest: any, bundleId: string) {
         .sort((left: any, right: any) => left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0);
 }
 
-test('registry preserves 31 SVG identities and registers only the three approved planet PNGs', async () => {
+async function createHistoricalPlanetBundle(projectRoot: string) {
+    const assets = await Promise.all(PLANET_ASSETS.map(async (asset) => {
+        const bytes = await readFile(path.join(projectRoot, 'private', ...asset.logicalPath.split('/')));
+        assert.equal(hash(bytes), asset.sourceSha256);
+        return { ...asset, bytes };
+    }));
+    assets.sort((left, right) => left.assetId.localeCompare(right.assetId));
+
+    const headerSize = 64;
+    const indexHeaderSize = 28;
+    const recordSize = 72;
+    const digestSize = 32;
+    const idBytes = assets.map((asset) => Buffer.from(asset.assetId, 'utf8'));
+    const stringTableSize = idBytes.reduce((size, id) => size + id.length, 0);
+    const stringTableOffset = indexHeaderSize + assets.length * recordSize;
+    const indexSize = stringTableOffset + stringTableSize + digestSize;
+    const payloadOffset = headerSize + indexSize;
+    const payloadSize = assets.reduce((size, asset) => size + asset.bytes.length, 0);
+    const index = Buffer.alloc(indexSize);
+    index.write('INDX', 0, 'ascii');
+    index.writeUInt32LE(assets.length, 4);
+    index.writeUInt16LE(recordSize, 8);
+    index.writeUInt16LE(0, 10);
+    index.writeBigUInt64LE(BigInt(stringTableOffset), 12);
+    index.writeBigUInt64LE(BigInt(stringTableSize), 20);
+
+    let stringCursor = stringTableOffset;
+    let payloadCursor = 0;
+    let stringOffset = 0;
+    assets.forEach((asset, indexInAssets) => {
+        const recordOffset = indexHeaderSize + indexInAssets * recordSize;
+        const id = idBytes[indexInAssets];
+        index.writeUInt32LE(stringOffset, recordOffset);
+        index.writeUInt32LE(id.length, recordOffset + 4);
+        index.writeBigUInt64LE(BigInt(payloadCursor), recordOffset + 8);
+        index.writeBigUInt64LE(BigInt(asset.bytes.length), recordOffset + 16);
+        index.writeBigUInt64LE(BigInt(asset.bytes.length), recordOffset + 24);
+        index.writeUInt16LE(1, recordOffset + 32);
+        index.writeUInt16LE(0, recordOffset + 34);
+        index.writeUInt32LE(0, recordOffset + 36);
+        createHash('sha256').update(asset.bytes).digest().copy(index, recordOffset + 40);
+        id.copy(index, stringCursor);
+        stringCursor += id.length;
+        stringOffset += id.length;
+        payloadCursor += asset.bytes.length;
+    });
+    createHash('sha256').update(index.subarray(0, index.length - digestSize)).digest()
+        .copy(index, index.length - digestSize);
+
+    const bundle = Buffer.alloc(payloadOffset + payloadSize);
+    bundle.write('RTAB', 0, 'ascii');
+    bundle.writeUInt16LE(0x0100, 4);
+    bundle.writeUInt16LE(0x0003, 6);
+    bundle.writeBigUInt64LE(BigInt(payloadOffset), 8);
+    bundle.writeBigUInt64LE(BigInt(headerSize), 16);
+    bundle.writeBigUInt64LE(BigInt(indexSize), 24);
+    index.copy(bundle, headerSize);
+    payloadCursor = payloadOffset;
+    for (const asset of assets) {
+        asset.bytes.copy(bundle, payloadCursor);
+        payloadCursor += asset.bytes.length;
+    }
+    return bundle;
+}
+
+async function addPreviouslyOwnedPlanetBundle(projectRoot: string) {
+    const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+    const bundlePath = path.join(projectRoot, 'public', 'assets', 'planets.bin');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const bytes = await createHistoricalPlanetBundle(projectRoot);
+    assert.equal(hash(bytes), 'ef64dfb9a6491965d5b3870918f317f9a5632fb32eeb5c4be812b1f1829dc120');
+    manifest.manifestSchemaVersion = '1.1';
+    const planetBundle = manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets');
+    planetBundle.formatVersion = '1.0';
+    planetBundle.bundleSha256 = hash(bytes);
+    await writeFile(bundlePath, bytes);
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    return bytes;
+}
+
+test('registry contains 31 SVGs and three planet PNGs while preserving runtime SVG identities', async () => {
     const registry = await readAssetRegistry(REPOSITORY_ROOT);
-    const svgAssets = registry.assets.filter((asset) => asset.contentType === 'SVG');
-    const pngAssets = registry.assets.filter((asset) => asset.contentType === 'PNG');
     const runtimeByUrl = new Map(publicSvgTextures.map((asset) => [decodeURIComponent(asset.url.slice('/assets/'.length)), asset]));
 
-    assert.equal(registry.registrySchemaVersion, '1.1');
+    assert.equal(registry.registrySchemaVersion, '1.2');
     assert.equal(registry.assets.length, 34);
-    assert.equal(svgAssets.length, 31);
-    assert.equal(pngAssets.length, 3);
+    assert.equal(registry.assets.filter((asset) => asset.contentType === 'SVG' && asset.logicalPath.endsWith('.svg')).length, 31);
+    assert.equal(registry.assets.filter((asset) => asset.contentType === 'PNG' && asset.logicalPath.endsWith('.png')).length, 3);
     assert.equal('bundles' in registry, false);
     assert.equal(registry.assets.some((asset) => 'bundleId' in asset), false);
-    assert.deepEqual(
-        pngAssets.map((asset) => [asset.assetId, asset.logicalPath, asset.textureKey, asset.contentType]),
-        PLANET_ASSETS.map(([assetId, logicalPath, textureKey]) => [assetId, logicalPath, textureKey, 'PNG'])
-    );
-    assert.equal(registry.assets.some((asset) => asset.logicalPath.endsWith('Map-111-2.png')), false);
-    assert.equal(registry.assets.some((asset) => asset.logicalPath.endsWith('Map-122-2.png')), false);
     assert.equal(publicSvgTextures.length, 31);
 
-    for (const asset of svgAssets) {
+    for (const asset of registry.assets.filter((entry) => entry.contentType === 'SVG')) {
         const runtimeAsset = runtimeByUrl.get(asset.logicalPath.slice('assets/'.length));
         assert.ok(runtimeAsset, `Missing runtime manifest path ${asset.logicalPath}`);
         assert.equal(runtimeAsset.key, asset.textureKey);
         assert.deepEqual(runtimeAsset.aliases, asset.aliases);
     }
     assert.deepEqual(
-        svgAssets.filter((asset) => asset.aliases.length > 0).map((asset) => [asset.logicalPath, asset.aliases]),
+        registry.assets.filter((asset) => asset.aliases.length > 0).map((asset) => [asset.logicalPath, asset.aliases]),
         [
             ['assets/Components/Aistiaria/01_side_hull_angular.svg', ['central-hull']],
             ['assets/Ships/alien-interceptor.svg', ['alien-interceptor']],
@@ -224,16 +330,24 @@ test('registry rejects duplicate IDs, duplicate texture keys, alias conflicts, u
     unsupportedType.assets[0].contentType = 'JSON';
     assert.throws(() => validateAssetRegistry(unsupportedType), /unsupported content type/);
 
+    const pngType = structuredClone(registry);
+    pngType.assets[0].contentType = 'PNG';
+    assert.throws(() => validateAssetRegistry(pngType), /invalid logicalPath/);
+
+    const pngPath = structuredClone(registry);
+    pngPath.assets[0].logicalPath = 'assets/Ships/not-an-svg.png';
+    assert.throws(() => validateAssetRegistry(pngPath), /invalid logicalPath/);
+
     const oldSchema = structuredClone(registry);
-    oldSchema.registrySchemaVersion = '1.0';
-    assert.throws(() => validateAssetRegistry(oldSchema), /registrySchemaVersion must be "1.1"/);
+    oldSchema.registrySchemaVersion = '1.1';
+    assert.throws(() => validateAssetRegistry(oldSchema), /registrySchemaVersion must be "1.2"/);
 
     const oldBundleFields = structuredClone(registry);
     oldBundleFields.assets[0].bundleId = 'ships1';
     assert.throws(() => validateAssetRegistry(oldBundleFields), /only asset identity and runtime metadata/);
 });
 
-test('folder-derived packaging emits the four RTAB 1.0 bundles and a manifest schema 1.1', async () => {
+test('folder-derived packaging emits three SVG RTAB 1.0 bundles and a planet PNG RTAB 1.1 bundle', async () => {
     await createProjectFixture(async (projectRoot) => {
         const first = await createAssetPackageOutputs({ projectRoot });
         const second = await createAssetPackageOutputs({ projectRoot });
@@ -249,42 +363,49 @@ test('folder-derived packaging emits the four RTAB 1.0 bundles and a manifest sc
             ['ships', 10],
             ['turrets-platforms', 2]
         ]);
-        assert.equal(manifest.manifestSchemaVersion, '1.1');
+        assert.equal(manifest.manifestSchemaVersion, '1.2');
         assert.equal(manifest.assets.length, 34);
         assert.equal(manifest.bundles.length, 4);
-        assert.equal(schema.properties.manifestSchemaVersion.const, '1.1');
+        assert.equal(schema.properties.manifestSchemaVersion.const, '1.2');
+        assert.deepEqual(schema.properties.assets.items.properties.contentType.enum, ['SVG', 'PNG']);
         assert.deepEqual(manifest.bundles.map((bundle: any) => bundle.bundleFile).sort(), [
             '/assets/components.bin',
             '/assets/planets.bin',
             '/assets/ships.bin',
             '/assets/turrets-platforms.bin'
         ]);
+        assert.equal(manifest.assets.filter((asset: any) => asset.contentType === 'SVG').length, 31);
+        assert.equal(manifest.assets.filter((asset: any) => asset.contentType === 'PNG').length, 3);
+        assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets').formatVersion, '1.1');
 
         for (const bundle of manifest.bundles) {
             const outputPath = path.join(projectRoot, 'public', bundle.bundleFile.slice(1));
             const bytes = first.outputFiles.get(outputPath) as Buffer;
             const decoded = await validateRtabBundle(bytes, bundle, manifestExpectedAssets(manifest, bundle.bundleId));
-            assert.equal(bytes.readUInt16LE(4), 0x0100);
+            assert.equal(bytes.readUInt16LE(4), bundle.formatVersion === '1.0' ? 0x0100 : 0x0101);
             assert.equal(hash(bytes), bundle.bundleSha256);
             assert.equal(decoded.length, bundle.assetCount);
-            assert.equal(
-                decoded.every((asset: any) => asset.contentType === (bundle.bundleId === 'planets' ? 'PNG' : 'SVG')),
-                true
-            );
+            assert.ok(decoded.every((asset: any) => (
+                bundle.bundleId === 'planets' ? asset.contentType === 'PNG' : asset.contentType === 'SVG'
+            )));
             assert.deepEqual(bytes, second.outputFiles.get(outputPath));
         }
-        assert.equal(manifest.assets.some((asset: any) => asset.logicalPath.endsWith('Map-111-2.png')), false);
-        assert.equal(manifest.assets.some((asset: any) => asset.logicalPath.endsWith('Map-122-2.png')), false);
+        assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'ships').bundleSha256, '5a88e030dfbd0cecc8d2b51acf7e80dce2bdb36862838ba0ea113d84707fd65b');
+        assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'components').bundleSha256, 'c765204592f66b0431a41b7c20a3f4ff58559757883aa39f0a81ad864a1928df');
+        assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'turrets-platforms').bundleSha256, '943e47cfed1ff6e28bc4bca70efe0f42c9d1403b8e2a17c24643f8a61c9e126e');
     });
 });
 
-test('real planet PNGs match the approved bounded RGBA8 non-interlaced profile', async () => {
+test('real planet PNGs match the approved fingerprints and bounded RGBA8 non-interlaced profile', async () => {
     let aggregateCompressedBytes = 0;
     let aggregateDecodedPixelBytes = 0;
     let aggregateInflatedScanlineBytes = 0;
-    for (const [, logicalPath] of PLANET_ASSETS) {
-        const bytes = await readFile(path.join(REPOSITORY_ROOT, 'public', logicalPath));
-        const result = await validatePng(bytes, { logicalPath });
+    for (const asset of PLANET_ASSETS) {
+        const bytes = await readFile(path.join(REPOSITORY_ROOT, 'public', ...asset.logicalPath.split('/')));
+        const privateBytes = await readFile(path.join(REPOSITORY_ROOT, 'private', ...asset.logicalPath.split('/')));
+        assert.equal(hash(bytes), asset.sourceSha256, `Public fingerprint differs: ${asset.logicalPath}`);
+        assert.deepEqual(privateBytes, bytes, `Private and public PNG differ: ${asset.logicalPath}`);
+        const result = await validatePng(bytes, asset);
         assert.equal(result.width, 2000);
         assert.equal(result.height, 1000);
         assert.equal(result.decodedPixelBytes, 8_000_000);
@@ -298,63 +419,87 @@ test('real planet PNGs match the approved bounded RGBA8 non-interlaced profile',
     assert.ok(aggregateInflatedScanlineBytes <= PNG_LIMITS.maxAggregateScanlineBytes);
 });
 
-test('packaging enforces the aggregate compressed PNG source-size limit', async () => {
+test('RTAB packages and preserves exactly the three approved private planet PNGs', async () => {
     await createProjectFixture(async (projectRoot) => {
-        const registryPath = path.join(projectRoot, 'scripts', 'asset-registry.json');
-        const registry = JSON.parse(await readFile(registryPath, 'utf8')) as Registry;
-        const basePng = createPng();
-        const ancillary = pngChunk('tEXt', Buffer.alloc(7 * 1024 * 1024));
-        const largePng = Buffer.concat([basePng.subarray(0, 33), ancillary, basePng.subarray(33)]);
-
-        for (let index = 0; index < 5; index += 1) {
-            const logicalPath = `assets/Planets/aggregate-file-${index}.png`;
-            registry.assets.push({
-                assetId: `rt.test.aggregate-file-${index}`,
-                logicalPath,
-                textureKey: `aggregateFile${index}`,
-                aliases: [],
-                contentType: 'PNG'
-            });
-            const source = resolveAssetSource(logicalPath, projectRoot);
-            await mkdir(path.dirname(source), { recursive: true });
-            await writeFile(source, largePng);
+        const planetRoot = path.join(projectRoot, 'private', 'assets', 'Planets');
+        const original = new Map<string, Buffer>();
+        for (const asset of PLANET_ASSETS) {
+            const filePath = path.join(planetRoot, asset.fileName);
+            original.set(asset.fileName, await readFile(filePath));
         }
-        await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
 
-        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /aggregate PNG source size exceeds/);
-        assert.ok(largePng.length <= PNG_LIMITS.maxFileBytes);
-        assert.ok(largePng.length * 5 > PNG_LIMITS.maxAggregateFileBytes);
+        const { manifest, outputFiles } = await createAssetPackageOutputs({ projectRoot });
+        assert.equal(manifest.assets.length, 34);
+        assert.equal(manifest.assets.filter((asset: any) => asset.logicalPath.startsWith('assets/Planets/')).length, 3);
+        assert.equal(outputFiles.has(path.join(projectRoot, 'public', 'assets', 'planets.bin')), true);
+        const planetBundle = manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets');
+        const planetBytes = outputFiles.get(path.join(projectRoot, 'public', 'assets', 'planets.bin')) as Buffer;
+        const decoded = await validateRtabBundle(planetBytes, planetBundle, manifestExpectedAssets(manifest, 'planets'));
+        assert.deepEqual(decoded.map((asset: any) => asset.assetId).sort(), PLANET_ASSETS.map((asset) => asset.assetId).sort());
+        for (const [fileName, bytes] of original) {
+            assert.deepEqual(await readFile(path.join(planetRoot, fileName)), bytes);
+            assert.deepEqual(
+                await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', fileName)),
+                bytes
+            );
+        }
     });
 });
 
-test('packaging independently enforces the aggregate decoded PNG pixel limit', async () => {
+test('missing private planet source fails explicitly', async () => {
     await createProjectFixture(async (projectRoot) => {
-        const registryPath = path.join(projectRoot, 'scripts', 'asset-registry.json');
-        const registry = JSON.parse(await readFile(registryPath, 'utf8')) as Registry;
-        const largePng = createPng({ width: 4096, height: 4095 });
-        const extraAssets = [];
-        for (let index = 0; index < 2; index += 1) {
-            const logicalPath = `assets/Planets/aggregate-pixels-${index}.png`;
-            const asset = {
-                assetId: `rt.test.aggregate-pixels-${index}`,
-                logicalPath,
-                textureKey: `aggregatePixels${index}`,
-                aliases: [],
-                contentType: 'PNG' as const
-            };
-            registry.assets.push(asset);
-            extraAssets.push(asset);
-        }
-        await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
-        for (const asset of registry.assets.filter((entry) => entry.contentType === 'PNG')) {
-            const source = resolveAssetSource(asset.logicalPath, projectRoot);
-            await mkdir(path.dirname(source), { recursive: true });
-            await writeFile(source, largePng);
-        }
+        await rm(path.join(projectRoot, 'private', 'assets', 'Planets', 'Map-111.png'));
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /could not find canonical source/);
+    });
+});
 
-        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /aggregate decoded pixel limit/);
-        assert.equal(extraAssets.length + 3, 5);
-        assert.ok(largePng.length < PNG_LIMITS.maxFileBytes);
+test('modified private planet sources fail and public copies are never packaging fallbacks', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        const privatePath = path.join(projectRoot, 'private', 'assets', 'Planets', 'Map-111.png');
+        const original = await readFile(privatePath);
+        const corrupted = Buffer.from(original);
+        corrupted[corrupted.length - 1] ^= 0xff;
+        await writeFile(privatePath, corrupted);
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /approved fingerprint/);
+        assert.deepEqual(await readFile(privatePath), corrupted);
+        assert.deepEqual(
+            await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Map-111.png')),
+            original
+        );
+    });
+
+    await createProjectFixture(async (projectRoot) => {
+        await rm(path.join(projectRoot, 'public', 'assets', 'Planets'), { recursive: true });
+        const { manifest, outputFiles } = await createAssetPackageOutputs({ projectRoot });
+        assert.equal(manifest.assets.length, 34);
+        assert.ok(outputFiles.has(path.join(projectRoot, 'public', 'assets', 'planets.bin')));
+    });
+});
+
+test('an absent private Planets directory fails even when public planet PNGs exist', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await rm(path.join(projectRoot, 'private', 'assets', 'Planets'), { recursive: true });
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /could not find canonical source/);
+    });
+});
+
+test('Planets directory rejects every unexpected file and nested directory', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        const planetRoot = path.join(projectRoot, 'private', 'assets', 'Planets');
+        const unexpectedFile = path.join(planetRoot, 'extra.png');
+        await writeFile(unexpectedFile, createPng());
+        await assert.rejects(
+            createAssetPackageOutputs({ projectRoot }),
+            /Unregistered asset source file/
+        );
+        await rm(unexpectedFile);
+
+        const unexpectedDirectory = path.join(planetRoot, 'nested');
+        await mkdir(unexpectedDirectory);
+        await assert.rejects(
+            createAssetPackageOutputs({ projectRoot }),
+            /Planet source entries must be the three direct registered PNG files/
+        );
     });
 });
 
@@ -369,38 +514,53 @@ test('PNG validator rejects unsupported IHDR profiles, invalid scanline filters,
     await assert.rejects(validatePng(corrupted, asset), /invalid CRC/);
 });
 
-test('RTAB record content type must match manifest metadata in both directions', async () => {
+test('RTAB validator rejects PNG and other unsupported content type codes', async () => {
     await createProjectFixture(async (projectRoot) => {
         const { outputFiles } = await createAssetPackageOutputs({ projectRoot });
         const manifest = JSON.parse(outputFiles.get(path.join(projectRoot, 'public', 'assets', 'asset-manifest.json')) as string);
-        const bundle = manifest.bundles.find((entry: any) => entry.bundleId === 'planets');
+        const bundle = manifest.bundles.find((entry: any) => entry.bundleId === 'ships');
         const bundlePath = path.join(projectRoot, 'public', bundle.bundleFile.slice(1));
         const original = Buffer.from(outputFiles.get(bundlePath) as Buffer);
-        const expected = manifestExpectedAssets(manifest, 'planets');
-        const recordSaysSvg = Buffer.from(original);
-        changeFirstRecordContentType(recordSaysSvg, 0);
-        await assert.rejects(
-            validateRtabBundle(recordSaysSvg, bundle, expected),
-            /does not match manifest content type "PNG"/
-        );
+        const expected = manifestExpectedAssets(manifest, 'ships');
+        for (const code of [1, 2, 3, 4]) {
+            const changed = Buffer.from(original);
+            changeFirstRecordContentType(changed, code);
+            await assert.rejects(
+                validateRtabBundle(changed, bundle, expected),
+                new RegExp(`Unsupported RTAB content type ${code}`)
+            );
+        }
 
-        const manifestSaysSvg = expected.map((asset: any, index: number) => (
-            index === 0 ? { ...asset, contentType: 'SVG' } : asset
-        ));
+        const planetBundle = manifest.bundles.find((entry: any) => entry.bundleId === 'planets');
+        const planetPath = path.join(projectRoot, 'public', planetBundle.bundleFile.slice(1));
+        const planetBytes = Buffer.from(outputFiles.get(planetPath) as Buffer);
+        const legacyVersionBytes = Buffer.from(planetBytes);
+        legacyVersionBytes.writeUInt16LE(0x0100, 4);
         await assert.rejects(
-            validateRtabBundle(original, bundle, manifestSaysSvg),
-            /RTAB content type .* does not match manifest content type "SVG"/
+            validateRtabBundle(
+                legacyVersionBytes,
+                { ...planetBundle, formatVersion: '1.0' },
+                manifestExpectedAssets(manifest, 'planets')
+            ),
+            /Unsupported RTAB content type 1/
         );
+        for (const code of [2, 3, 4]) {
+            const changed = Buffer.from(planetBytes);
+            changeFirstRecordContentType(changed, code);
+            await assert.rejects(
+                validateRtabBundle(changed, planetBundle, manifestExpectedAssets(manifest, 'planets')),
+                new RegExp(`Unsupported RTAB content type ${code}`)
+            );
+        }
     });
 });
 
-test('clean-clone manifest content type must match the registry asset metadata', async () => {
+test('clean-clone manifest rejects content-type and logical-path mismatches', async () => {
     await createProjectFixture(async (projectRoot) => {
         await prepareAssets({ projectRoot });
         const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
         const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-        const planet = manifest.assets.find((asset: any) => asset.contentType === 'PNG');
-        planet.contentType = 'SVG';
+        manifest.assets.find((asset: any) => asset.contentType === 'SVG').contentType = 'PNG';
         await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
         await rm(path.join(projectRoot, 'private'), { recursive: true });
         await assert.rejects(
@@ -497,28 +657,10 @@ test('native Windows category traversal rejects junction/reparse-point directori
     });
 });
 
-test('lifecycle packages from private sources, keeps the SVG runtime manifest at 31 entries, and clean-clone validation is read-only', async () => {
+test('lifecycle publishes four mixed-asset bundles, preserves the 31-entry SVG runtime manifest, and validates clean clones', async () => {
     await createProjectFixture(async (projectRoot) => {
-        const legacyNestedBundle = path.join(projectRoot, 'public', 'assets', 'Ships', 'ships.bin');
-        await mkdir(path.dirname(legacyNestedBundle), { recursive: true });
-        const legacyBundleBytes = Buffer.from('previous nested bundle');
-        await writeFile(legacyNestedBundle, legacyBundleBytes);
-        await writeFile(
-            path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'),
-            JSON.stringify({
-                manifestSchemaVersion: '1.0',
-                assets: [],
-                bundles: [{
-                    bundleId: 'ships1',
-                    bundleFile: '/assets/Ships/ships.bin',
-                    bundleSha256: hash(legacyBundleBytes)
-                }]
-            })
-        );
-
         const generated = await prepareAssets({ projectRoot });
         assert.equal(generated.mode, 'package');
-        await assert.rejects(readFile(legacyNestedBundle), { code: 'ENOENT' });
         const runtimeManifestPath = path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts');
         const runtimeManifest = await readFile(runtimeManifestPath, 'utf8');
         const baselineRuntimeManifest = await readFile(path.join(REPOSITORY_ROOT, 'src', 'generated', 'publicSvgManifest.ts'), 'utf8');
@@ -533,6 +675,142 @@ test('lifecycle packages from private sources, keeps the SVG runtime manifest at
         assert.equal(cleanClone.mode, 'validate-only');
         assert.deepEqual(cleanClone.validatedBundles, ['components', 'planets', 'ships', 'turrets-platforms']);
         await assertSnapshotUnchanged(outputs);
+    });
+});
+
+test('publication replaces the exact historical transitional planet bundle with required RTAB 1.1 output', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const oldPlanetBundle = await addPreviouslyOwnedPlanetBundle(projectRoot);
+        const historicalManifest = JSON.parse(await readFile(
+            path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'),
+            'utf8'
+        ));
+        assert.equal(historicalManifest.assets.length, 34);
+        assert.deepEqual(historicalManifest.bundles.map((bundle: any) => bundle.bundleId).sort(), [
+            'components',
+            'planets',
+            'ships',
+            'turrets-platforms'
+        ]);
+        assert.equal(hash(await readFile(path.join(projectRoot, 'public', 'assets', 'planets.bin'))), hash(oldPlanetBundle));
+
+        const result = await prepareAssets({ projectRoot });
+        assert.equal(result.mode, 'package');
+        assert.equal(result.publication.staleFiles, 0);
+        const manifest = JSON.parse(await readFile(
+            path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'),
+            'utf8'
+        ));
+        assert.equal(manifest.manifestSchemaVersion, '1.2');
+        assert.equal(manifest.assets.length, 34);
+        assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets').formatVersion, '1.1');
+        assert.deepEqual(manifest.bundles.map((bundle: any) => bundle.bundleId).sort(), [
+            'components',
+            'planets',
+            'ships',
+            'turrets-platforms'
+        ]);
+        assert.notDeepEqual(await readFile(path.join(projectRoot, 'public', 'assets', 'planets.bin')), oldPlanetBundle);
+    });
+});
+
+test('publication accepts the exact interrupted SVG-only predecessor and adds required planets.bin', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const assetsRoot = path.join(projectRoot, 'public', 'assets');
+        const manifestPath = path.join(assetsRoot, 'asset-manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        manifest.manifestSchemaVersion = '1.1';
+        manifest.assets = manifest.assets.filter((asset: any) => asset.contentType === 'SVG');
+        manifest.bundles = manifest.bundles.filter((bundle: any) => bundle.bundleId !== 'planets');
+        await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await rm(path.join(assetsRoot, 'planets.bin'));
+
+        const result = await prepareAssets({ projectRoot });
+        assert.equal(result.mode, 'package');
+        const upgraded = JSON.parse(await readFile(manifestPath, 'utf8'));
+        assert.equal(upgraded.manifestSchemaVersion, '1.2');
+        assert.equal(upgraded.assets.length, 34);
+        assert.equal(upgraded.bundles.length, 4);
+        assert.equal(upgraded.bundles.find((bundle: any) => bundle.bundleId === 'planets').formatVersion, '1.1');
+    });
+});
+
+test('publication preserves and rejects a planet bundle whose prior manifest hash does not match', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        await addPreviouslyOwnedPlanetBundle(projectRoot);
+        const planetPath = path.join(projectRoot, 'public', 'assets', 'planets.bin');
+        const corrupt = await readFile(planetPath);
+        corrupt[corrupt.length - 1] ^= 0xff;
+        await writeFile(planetPath, corrupt);
+        const before = await snapshotOutputs(projectRoot);
+
+        await assert.rejects(
+            prepareAssets({ projectRoot }),
+            /Previous bundle hash does not match its manifest/
+        );
+        await assertSnapshotUnchanged(before);
+    });
+});
+
+test('publication preserves and rejects an unowned planet bundle', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+        await rm(manifestPath);
+        const planetPath = path.join(projectRoot, 'public', 'assets', 'planets.bin');
+        const oldPlanetBundle = await createHistoricalPlanetBundle(projectRoot);
+        await writeFile(planetPath, oldPlanetBundle);
+
+        await assert.rejects(
+            prepareAssets({ projectRoot }),
+            /no historical manifest ownership; preserving it/
+        );
+        assert.deepEqual(await readFile(planetPath), oldPlanetBundle);
+    });
+});
+
+test('publication rejects malformed historical planet ownership metadata', async () => {
+    const mutations = [
+        (bundle: any) => { bundle.bundleId = 'wrong-id'; },
+        (bundle: any) => { bundle.formatVersion = '1.1'; },
+        (bundle: any) => { bundle.assetCount = 2; },
+        (bundle: any) => { bundle.unexpected = true; }
+    ];
+    for (const mutate of mutations) {
+        await createProjectFixture(async (projectRoot) => {
+            await prepareAssets({ projectRoot });
+            await addPreviouslyOwnedPlanetBundle(projectRoot);
+            const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+            const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+            mutate(manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets'));
+            await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+            await assert.rejects(
+                prepareAssets({ projectRoot }),
+                /historical bundle record|bundle record has an invalid shape/
+            );
+        });
+    }
+
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        await addPreviouslyOwnedPlanetBundle(projectRoot);
+        const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        manifest.assets = manifest.assets.filter((asset: any) => asset.assetId !== 'rt.planet-map.map-111');
+        await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await assert.rejects(prepareAssets({ projectRoot }), /exact interrupted schema-1.1 31-asset state|complete historical schema-1.1 34-asset state/);
+    });
+});
+
+test('publication rejects a historical manifest that claims planets.bin when the file is missing', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        await addPreviouslyOwnedPlanetBundle(projectRoot);
+        await rm(path.join(projectRoot, 'public', 'assets', 'planets.bin'));
+        await assert.rejects(prepareAssets({ projectRoot }), /Historical manifest claims planets.bin but the file is unavailable/);
     });
 });
 
@@ -566,6 +844,20 @@ test('clean-clone validation detects bundle hash mismatches and rejects extra ma
         await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
         await rm(path.join(projectRoot, 'private'), { recursive: true });
         await assert.rejects(validateCommittedAssetOutputs({ projectRoot }), /unsupported properties/);
+    });
+
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        const asset = manifest.assets.find((entry: any) => entry.contentType === 'SVG');
+        asset.sourceSha256 = '0'.repeat(64);
+        await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await rm(path.join(projectRoot, 'private'), { recursive: true });
+        await assert.rejects(
+            validateCommittedAssetOutputs({ projectRoot }),
+            /does not match its source SHA-256/
+        );
     });
 });
 
@@ -647,12 +939,13 @@ test('preparation preserves existing locks and journals; clean-clone mode reject
     }
 });
 
-test('generated manifest schema 1.1 contains both content types without bundle membership arrays', () => {
+test('generated manifest schema 1.2 permits SVG and PNG without redundant bundle membership arrays', () => {
     const schema = getManifestSchema();
     assert.equal(schema.$schema, 'https://json-schema.org/draft/2020-12/schema');
-    assert.equal(schema.properties.manifestSchemaVersion.const, '1.1');
+    assert.equal(schema.properties.manifestSchemaVersion.const, '1.2');
     assert.deepEqual(schema.required, ['manifestSchemaVersion', 'assets', 'bundles']);
     assert.deepEqual(schema.properties.assets.items.properties.contentType.enum, ['SVG', 'PNG']);
+    assert.deepEqual(schema.properties.bundles.items.properties.formatVersion.enum, ['1.0', '1.1']);
     assert.equal('assetIds' in schema.properties.bundles.items.properties, false);
     assert.equal('textureKeys' in schema.properties.bundles.items.properties, false);
 });

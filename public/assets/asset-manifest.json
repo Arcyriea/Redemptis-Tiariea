@@ -1,5 +1,5 @@
 {
-  "manifestSchemaVersion": "1.1",
+  "manifestSchemaVersion": "1.2",
   "assets": [
     {
       "assetId": "rt.component.aistiaria.connector-module",
@@ -325,9 +325,9 @@
     {
       "bundleId": "planets",
       "bundleFile": "/assets/planets.bin",
-      "formatVersion": "1.0",
+      "formatVersion": "1.1",
       "assetCount": 3,
-      "bundleSha256": "ef64dfb9a6491965d5b3870918f317f9a5632fb32eeb5c4be812b1f1829dc120"
+      "bundleSha256": "6d1b1206f74f207f7d8af01ab3a9d0b768d0f9021fe456753f894bb04a411814"
     },
     {
       "bundleId": "ships",

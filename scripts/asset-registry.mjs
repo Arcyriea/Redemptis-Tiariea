@@ -16,8 +16,8 @@ function fail(message) {
 
 function isSafeLogicalPath(logicalPath, contentType) {
     const extension = contentType === 'SVG' ? '.svg' : contentType === 'PNG' ? '.png' : null;
-    return typeof logicalPath === 'string'
-        && extension !== null
+    return extension !== null
+        && typeof logicalPath === 'string'
         && logicalPath.startsWith('assets/')
         && logicalPath.endsWith(extension)
         && !logicalPath.includes('\\')
@@ -25,8 +25,8 @@ function isSafeLogicalPath(logicalPath, contentType) {
 }
 
 export function validateAssetRegistry(registry) {
-    if (!registry || registry.registrySchemaVersion !== '1.1') {
-        fail('registrySchemaVersion must be "1.1"');
+    if (!registry || registry.registrySchemaVersion !== '1.2') {
+        fail('registrySchemaVersion must be "1.2"');
     }
     if (!Array.isArray(registry.assets) || registry.assets.length === 0) {
         fail('assets must be a non-empty array');

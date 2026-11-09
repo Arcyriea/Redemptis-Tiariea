@@ -3,7 +3,7 @@ import { constants as fsConstants } from 'node:fs';
 import { copyFile, link, lstat, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readAssetRegistry, PROJECT_ROOT } from './asset-registry.mjs';
+import { PROJECT_ROOT } from './asset-registry.mjs';
 import { validatePng } from './validate-png.mjs';
 
 const PLANET_ASSETS = Object.freeze([
@@ -57,16 +57,6 @@ async function readRegularFile(filePath, label) {
 }
 
 async function inspectPlan(projectRoot) {
-    const registry = await readAssetRegistry(projectRoot);
-    for (const expected of PLANET_ASSETS) {
-        const asset = registry.assets.find((entry) => entry.assetId === expected.assetId);
-        if (!asset || asset.logicalPath !== expected.logicalPath
-            || asset.textureKey !== expected.textureKey
-            || asset.contentType !== 'PNG' || asset.aliases.length !== 0) {
-            fail(`registry identity does not match the approved mapping for ${expected.logicalPath}`);
-        }
-    }
-
     const publicRoot = path.join(projectRoot, 'public');
     const publicAssets = path.join(publicRoot, 'assets');
     const publicPlanets = path.join(publicAssets, 'Planets');
