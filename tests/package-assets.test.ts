@@ -17,7 +17,7 @@ import {
     validateCommittedAssetOutputs,
     validateRtabBundle
 } from '../scripts/package-assets.mjs';
-import { PNG_LIMITS, validatePng } from '../scripts/validate-png.mjs';
+import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from '../scripts/validate-png.mjs';
 import { prepareAssets } from '../scripts/prepare-assets.mjs';
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..');
@@ -80,6 +80,102 @@ function pngChunk(type: string, data: Buffer) {
     return chunk;
 }
 
+function addPngTextChunk(bytes: Buffer) {
+    const chunks: Buffer[] = [];
+    let offset = 8;
+    while (offset < bytes.length) {
+        const length = bytes.readUInt32BE(offset);
+        const end = offset + length + 12;
+        const type = bytes.toString('ascii', offset + 4, offset + 8);
+        if (type === 'IEND') {
+            chunks.push(pngChunk('tEXt', Buffer.from('Comment\0changed')));
+        }
+        chunks.push(bytes.subarray(offset, end));
+        offset = end;
+    }
+    return Buffer.concat([bytes.subarray(0, 8), ...chunks]);
+}
+
+function rebuildBundleWithPayload(bundle: Buffer, assetId: string, replacement: Buffer) {
+    const headerSize = 64;
+    const indexHeaderSize = 28;
+    const recordSize = 72;
+    const digestSize = 32;
+    const indexOffset = Number(bundle.readBigUInt64LE(16));
+    const indexSize = Number(bundle.readBigUInt64LE(24));
+    const payloadOffset = Number(bundle.readBigUInt64LE(8));
+    const index = bundle.subarray(indexOffset, indexOffset + indexSize);
+    const entryCount = index.readUInt32LE(4);
+    const stringTableOffset = Number(index.readBigUInt64LE(12));
+    const stringTableSize = Number(index.readBigUInt64LE(20));
+    const stringTable = index.subarray(stringTableOffset, stringTableOffset + stringTableSize);
+    const entries = [];
+    for (let i = 0; i < entryCount; i += 1) {
+        const recordOffset = indexHeaderSize + i * recordSize;
+        const idOffset = index.readUInt32LE(recordOffset);
+        const idLength = index.readUInt32LE(recordOffset + 4);
+        const id = stringTable.subarray(idOffset, idOffset + idLength).toString('utf8');
+        const relativeOffset = Number(index.readBigUInt64LE(recordOffset + 8));
+        const size = Number(index.readBigUInt64LE(recordOffset + 16));
+        entries.push({
+            id,
+            contentType: index.readUInt16LE(recordOffset + 32),
+            compressionMethod: index.readUInt16LE(recordOffset + 34),
+            flags: index.readUInt32LE(recordOffset + 36),
+            bytes: id === assetId
+                ? replacement
+                : bundle.subarray(payloadOffset + relativeOffset, payloadOffset + relativeOffset + size)
+        });
+    }
+
+    const ids = entries.map((entry) => Buffer.from(entry.id, 'utf8'));
+    const nextStringOffset = indexHeaderSize + entries.length * recordSize;
+    const nextStringSize = ids.reduce((size, id) => size + id.length, 0);
+    const nextIndexSize = nextStringOffset + nextStringSize + digestSize;
+    const nextPayloadOffset = headerSize + nextIndexSize;
+    const nextPayloadSize = entries.reduce((size, entry) => size + entry.bytes.length, 0);
+    const nextIndex = Buffer.alloc(nextIndexSize);
+    nextIndex.write('INDX', 0, 'ascii');
+    nextIndex.writeUInt32LE(entries.length, 4);
+    nextIndex.writeUInt16LE(recordSize, 8);
+    nextIndex.writeBigUInt64LE(BigInt(nextStringOffset), 12);
+    nextIndex.writeBigUInt64LE(BigInt(nextStringSize), 20);
+    let stringCursor = nextStringOffset;
+    let stringRecordOffset = 0;
+    let payloadCursor = 0;
+    entries.forEach((entry, i) => {
+        const recordOffset = indexHeaderSize + i * recordSize;
+        const id = ids[i];
+        nextIndex.writeUInt32LE(stringRecordOffset, recordOffset);
+        nextIndex.writeUInt32LE(id.length, recordOffset + 4);
+        nextIndex.writeBigUInt64LE(BigInt(payloadCursor), recordOffset + 8);
+        nextIndex.writeBigUInt64LE(BigInt(entry.bytes.length), recordOffset + 16);
+        nextIndex.writeBigUInt64LE(BigInt(entry.bytes.length), recordOffset + 24);
+        nextIndex.writeUInt16LE(entry.contentType, recordOffset + 32);
+        nextIndex.writeUInt16LE(entry.compressionMethod, recordOffset + 34);
+        nextIndex.writeUInt32LE(entry.flags, recordOffset + 36);
+        createHash('sha256').update(entry.bytes).digest().copy(nextIndex, recordOffset + 40);
+        id.copy(nextIndex, stringCursor);
+        stringCursor += id.length;
+        stringRecordOffset += id.length;
+        payloadCursor += entry.bytes.length;
+    });
+    createHash('sha256').update(nextIndex.subarray(0, nextIndex.length - digestSize)).digest()
+        .copy(nextIndex, nextIndex.length - digestSize);
+    const output = Buffer.alloc(nextPayloadOffset + nextPayloadSize);
+    bundle.copy(output, 0, 0, headerSize);
+    output.writeBigUInt64LE(BigInt(nextPayloadOffset), 8);
+    output.writeBigUInt64LE(BigInt(headerSize), 16);
+    output.writeBigUInt64LE(BigInt(nextIndexSize), 24);
+    nextIndex.copy(output, headerSize);
+    let cursor = nextPayloadOffset;
+    for (const entry of entries) {
+        entry.bytes.copy(output, cursor);
+        cursor += entry.bytes.length;
+    }
+    return output;
+}
+
 function createPng({
     width = 1,
     height = 1,
@@ -138,7 +234,7 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     for (const asset of registry.assets) {
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
         await mkdir(path.dirname(sourcePath), { recursive: true });
-        const source = await readFile(path.join(REPOSITORY_ROOT, 'private', ...asset.logicalPath.split('/')));
+        const source = await readFile(path.join(REPOSITORY_ROOT, 'public', ...asset.logicalPath.split('/')));
         await writeFile(sourcePath, source);
 
         if (asset.logicalPath.startsWith('assets/Ships/')) {
@@ -152,7 +248,7 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     await mkdir(privatePlanetRoot, { recursive: true });
     await mkdir(publicPlanetRoot, { recursive: true });
     for (const asset of PLANET_ASSETS) {
-        const source = await readFile(path.join(REPOSITORY_ROOT, 'private', ...asset.logicalPath.split('/')));
+        const source = await readFile(path.join(REPOSITORY_ROOT, 'public', ...asset.logicalPath.split('/')));
         await writeFile(path.join(privatePlanetRoot, asset.fileName), source);
         await writeFile(path.join(publicPlanetRoot, asset.fileName), source);
     }
@@ -397,24 +493,22 @@ test('folder-derived packaging emits three SVG RTAB 1.0 bundles and a planet PNG
 });
 
 test('real planet PNGs match the approved fingerprints and bounded RGBA8 non-interlaced profile', async () => {
-    let aggregateCompressedBytes = 0;
+    let aggregateFileBytes = 0;
     let aggregateDecodedPixelBytes = 0;
     let aggregateInflatedScanlineBytes = 0;
     for (const asset of PLANET_ASSETS) {
         const bytes = await readFile(path.join(REPOSITORY_ROOT, 'public', ...asset.logicalPath.split('/')));
-        const privateBytes = await readFile(path.join(REPOSITORY_ROOT, 'private', ...asset.logicalPath.split('/')));
         assert.equal(hash(bytes), asset.sourceSha256, `Public fingerprint differs: ${asset.logicalPath}`);
-        assert.deepEqual(privateBytes, bytes, `Private and public PNG differ: ${asset.logicalPath}`);
         const result = await validatePng(bytes, asset);
         assert.equal(result.width, 2000);
         assert.equal(result.height, 1000);
         assert.equal(result.decodedPixelBytes, 8_000_000);
         assert.equal(result.scanlineBytes, 8_001_000);
-        aggregateCompressedBytes += result.compressedBytes;
+        aggregateFileBytes += result.fileBytes;
         aggregateDecodedPixelBytes += result.decodedPixelBytes;
         aggregateInflatedScanlineBytes += result.scanlineBytes;
     }
-    assert.ok(aggregateCompressedBytes <= PNG_LIMITS.maxAggregateFileBytes);
+    assert.ok(aggregateFileBytes <= PNG_LIMITS.maxAggregateFileBytes);
     assert.ok(aggregateDecodedPixelBytes <= PNG_LIMITS.maxAggregateDecodedPixelBytes);
     assert.ok(aggregateInflatedScanlineBytes <= PNG_LIMITS.maxAggregateScanlineBytes);
 });
@@ -937,6 +1031,48 @@ test('preparation preserves existing locks and journals; clean-clone mode reject
             await assertSnapshotUnchanged(snapshots);
         });
     }
+});
+
+test('clean-clone validation rejects a rehashed planet payload with a non-approved source fingerprint', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const assetsRoot = path.join(projectRoot, 'public', 'assets');
+        const manifestPath = path.join(assetsRoot, 'asset-manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        const bundle = manifest.bundles.find((entry: any) => entry.bundleId === 'planets');
+        const bundlePath = path.join(projectRoot, 'public', bundle.bundleFile.slice(1));
+        const bundleBytes = await readFile(bundlePath);
+        const alteredAsset = manifest.assets.find((asset: any) => asset.assetId === 'rt.planet-map.map-111');
+        const originalPng = await readFile(path.join(projectRoot, 'private', ...alteredAsset.logicalPath.split('/')));
+        const alteredPng = addPngTextChunk(originalPng);
+        const alteredBundle = rebuildBundleWithPayload(bundleBytes, alteredAsset.assetId, alteredPng);
+
+        alteredAsset.sourceSha256 = hash(alteredPng);
+        bundle.bundleSha256 = hash(alteredBundle);
+        await writeFile(bundlePath, alteredBundle);
+        await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        await rm(path.join(projectRoot, 'private'), { recursive: true });
+
+        await assert.rejects(
+            validateCommittedAssetOutputs({ projectRoot }),
+            /does not match its approved fingerprint/
+        );
+    });
+});
+
+test('PNG aggregate limits cover full file sizes, decoded pixels, and inflated scanlines', () => {
+    assert.throws(
+        () => assertPngAggregateLimits(PNG_LIMITS.maxAggregateFileBytes + 1, 0, 0, 'test PNG set'),
+        /aggregate PNG file-size limit/
+    );
+    assert.throws(
+        () => assertPngAggregateLimits(0, PNG_LIMITS.maxAggregateDecodedPixelBytes + 1, 0, 'test PNG set'),
+        /aggregate decoded pixel limit/
+    );
+    assert.throws(
+        () => assertPngAggregateLimits(0, 0, PNG_LIMITS.maxAggregateScanlineBytes + 1, 'test PNG set'),
+        /aggregate inflated scanline limit/
+    );
 });
 
 test('generated manifest schema 1.2 permits SVG and PNG without redundant bundle membership arrays', () => {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import { test } from 'node:test';
 import {
+    assertPngAggregateLimits,
     assertPngAggregateDecodedLimits,
     PNG_LIMITS,
     validatePng
@@ -150,11 +151,38 @@ test('enforces dimensions, compressed-file size, and exact inflated scanline len
     await assert.rejects(validatePng(png({ height: PNG_LIMITS.maxHeight + 1 }), ASSET), /dimensions outside/);
 
     const oversizedAncillary = chunk('tEXt', Buffer.alloc(PNG_LIMITS.maxFileBytes));
-    await assert.rejects(validatePng(Buffer.concat([SIGNATURE, header(), oversizedAncillary]), ASSET), /compressed file limit/);
+    await assert.rejects(validatePng(Buffer.concat([SIGNATURE, header(), oversizedAncillary]), ASSET), /PNG file-size limit/);
 
     await assert.rejects(
         validatePng(png({ raw: Buffer.alloc(4) }), ASSET),
         /scanline bytes; expected 5/
+    );
+});
+
+test('counts ancillary PNG chunks toward aggregate full-file-size limit', async () => {
+    const baselineBytes = png();
+    const withAncillaryChunk = png({ beforeIdat: [chunk('tEXt', Buffer.alloc(64))] });
+    const baselineMetrics = await validatePng(baselineBytes, ASSET);
+    const expandedMetrics = await validatePng(withAncillaryChunk, ASSET);
+    assert.equal(baselineMetrics.compressedBytes, expandedMetrics.compressedBytes);
+    assert.equal(expandedMetrics.fileBytes, withAncillaryChunk.length);
+    assert.ok(expandedMetrics.fileBytes > baselineMetrics.fileBytes);
+
+    const limits = {
+        maxAggregateFileBytes: baselineMetrics.fileBytes + 1,
+        maxAggregateDecodedPixelBytes: 0,
+        maxAggregateScanlineBytes: 0
+    };
+    assert.doesNotThrow(() => assertPngAggregateLimits(
+        baselineMetrics.fileBytes,
+        0,
+        0,
+        'test PNG set',
+        limits
+    ));
+    assert.throws(
+        () => assertPngAggregateLimits(expandedMetrics.fileBytes, 0, 0, 'test PNG set', limits),
+        /aggregate PNG file-size limit/
     );
 });
 

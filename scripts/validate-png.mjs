@@ -21,6 +21,13 @@ export function assertPngAggregateDecodedLimits(decodedPixelBytes, inflatedScanl
     }
 }
 
+export function assertPngAggregateLimits(fileBytes, decodedPixelBytes, inflatedScanlineBytes, label, limits = PNG_LIMITS) {
+    if (fileBytes > limits.maxAggregateFileBytes) {
+        throw new Error(`${label} exceeds the ${limits.maxAggregateFileBytes}-byte aggregate PNG file-size limit`);
+    }
+    assertPngAggregateDecodedLimits(decodedPixelBytes, inflatedScanlineBytes, label, limits);
+}
+
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const CRC_TABLE = new Uint32Array(256);
 
@@ -79,7 +86,7 @@ export async function validatePng(bytes, asset) {
         fail(asset, 'is shorter than the minimum PNG structure');
     }
     if (bytes.length > PNG_LIMITS.maxFileBytes) {
-        fail(asset, `exceeds the ${PNG_LIMITS.maxFileBytes}-byte compressed file limit`);
+        fail(asset, `exceeds the ${PNG_LIMITS.maxFileBytes}-byte PNG file-size limit`);
     }
     if (!bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
         fail(asset, 'has an invalid PNG signature');
@@ -208,6 +215,7 @@ export async function validatePng(bytes, asset) {
     return {
         width,
         height,
+        fileBytes: bytes.length,
         compressedBytes,
         decodedPixelBytes,
         scanlineBytes

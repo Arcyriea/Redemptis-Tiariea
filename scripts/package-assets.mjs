@@ -4,7 +4,7 @@ import path from 'node:path';
 import saxes from 'saxes';
 import { fileURLToPath } from 'node:url';
 import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
-import { assertPngAggregateDecodedLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
+import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
 
 const HEADER_SIZE = 64;
 const INDEX_HEADER_SIZE = 28;
@@ -16,11 +16,11 @@ const UINT32_MAX = 0xffffffffn;
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const CONTENT_TYPE_CODES = Object.freeze({ SVG: 0, PNG: 1 });
-const APPROVED_PNG_HASHES = new Map([
-    ['assets/Planets/Map-111.png', '83d39b7a7603f574f47cee57c4d9b12b0b468b469fece0ffe7765d921f067ea1'],
-    ['assets/Planets/Map-122.png', '35f8af626f4d7162a2926ef3dad6cdec36610cfd6f3acac86a1547d764081f7e'],
-    ['assets/Planets/Map-692.png', '43652c4465b35a1e3ae4bf99bbb75308359179c9d1b3fd8711d38c806b1472a8']
-]);
+const APPROVED_PNG_HASHES = Object.freeze({
+    'assets/Planets/Map-111.png': '83d39b7a7603f574f47cee57c4d9b12b0b468b469fece0ffe7765d921f067ea1',
+    'assets/Planets/Map-122.png': '35f8af626f4d7162a2926ef3dad6cdec36610cfd6f3acac86a1547d764081f7e',
+    'assets/Planets/Map-692.png': '43652c4465b35a1e3ae4bf99bbb75308359179c9d1b3fd8711d38c806b1472a8'
+});
 
 function sha256(bytes) {
     return createHash('sha256').update(bytes).digest();
@@ -364,6 +364,7 @@ async function discoverCategoryAssets(projectRoot, registry) {
 
 async function loadValidatedInputs(projectRoot, registry) {
     const validatedAssets = [];
+    let aggregatePngFileBytes = 0;
     let aggregatePngDecodedBytes = 0;
     let aggregatePngScanlineBytes = 0;
     for (const asset of registry.assets) {
@@ -393,14 +394,16 @@ async function loadValidatedInputs(projectRoot, registry) {
         if (asset.contentType === 'SVG') {
             decodeSvg(bytes, asset);
         } else {
-            const approvedHash = APPROVED_PNG_HASHES.get(asset.logicalPath);
+            const approvedHash = APPROVED_PNG_HASHES[asset.logicalPath];
             if (!approvedHash || sha256Hex(bytes) !== approvedHash) {
                 throw new Error(`Fatal: private PNG source does not match its approved fingerprint: ${asset.logicalPath}`);
             }
             const pngResult = await validatePng(bytes, asset);
+            aggregatePngFileBytes += pngResult.fileBytes;
             aggregatePngDecodedBytes += pngResult.decodedPixelBytes;
             aggregatePngScanlineBytes += pngResult.scanlineBytes;
-            assertPngAggregateDecodedLimits(
+            assertPngAggregateLimits(
+                aggregatePngFileBytes,
                 aggregatePngDecodedBytes,
                 aggregatePngScanlineBytes,
                 'Planet PNG assets',
@@ -663,15 +666,17 @@ export async function validateRtabBundle(bytes, bundle, expectedAssets) {
         if (!expectedAsset.logicalPath.toLowerCase().endsWith(expectedExtension)) {
             throw new Error(`RTAB content type for "${assetId}" does not match its logical path`);
         }
+        let pngValidation;
         if (contentTypeName === 'SVG') {
             decodeSvg(assetPayload, expectedAsset);
         } else {
-            await validatePng(assetPayload, expectedAsset);
+            pngValidation = await validatePng(assetPayload, expectedAsset);
         }
         records.push({
             assetId,
             bytes: assetPayload,
-            contentType: contentTypeName
+            contentType: contentTypeName,
+            pngValidation
         });
         expectedStringOffsetCursor += idLength;
         expectedPayloadOffset += storedSize;
@@ -741,6 +746,10 @@ function validateManifest(manifest, registry) {
             throw new Error(`RTAB manifest metadata does not match registry asset "${expected.assetId}"`);
         }
         assertHexDigest(actual.sourceSha256, `source for "${expected.assetId}"`);
+        if (expected.contentType === 'PNG'
+            && actual.sourceSha256 !== APPROVED_PNG_HASHES[expected.logicalPath]) {
+            throw new Error(`RTAB manifest source SHA-256 for "${expected.assetId}" does not match its approved fingerprint`);
+        }
     }
 
     if (manifest.bundles.length !== expectedBundles.size) {
@@ -785,6 +794,9 @@ export async function validateCommittedAssetOutputs({ projectRoot = PROJECT_ROOT
     }
 
     const validatedBundles = [];
+    let aggregatePngFileBytes = 0;
+    let aggregatePngDecodedBytes = 0;
+    let aggregatePngScanlineBytes = 0;
     for (const bundle of manifest.bundles) {
         const bundlePath = safeBundlePath(projectRoot, bundle.bundleFile);
         let bytes;
@@ -805,7 +817,22 @@ export async function validateCommittedAssetOutputs({ projectRoot = PROJECT_ROOT
             .sort((left, right) => (
                 left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0
             ));
-        await validateRtabBundle(bytes, bundle, expectedAssets);
+        const records = await validateRtabBundle(bytes, bundle, expectedAssets);
+        for (const record of records) {
+            if (!record.pngValidation) {
+                continue;
+            }
+            aggregatePngFileBytes += record.pngValidation.fileBytes;
+            aggregatePngDecodedBytes += record.pngValidation.decodedPixelBytes;
+            aggregatePngScanlineBytes += record.pngValidation.scanlineBytes;
+        }
+        assertPngAggregateLimits(
+            aggregatePngFileBytes,
+            aggregatePngDecodedBytes,
+            aggregatePngScanlineBytes,
+            'Committed planet PNG assets',
+            PNG_LIMITS
+        );
         validatedBundles.push(bundle.bundleId);
     }
     return { manifest, validatedBundles };

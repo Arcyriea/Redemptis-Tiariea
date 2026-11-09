@@ -97,6 +97,45 @@ test('mismatched existing destination stops without overwriting it', async () =>
     });
 });
 
+test('registry identity mismatch aborts before changing public sources or existing private destinations', async () => {
+    await createFixture(async (projectRoot) => {
+        const registryPath = path.join(projectRoot, 'scripts', 'asset-registry.json');
+        const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+        const mismatched = registry.assets.find((asset: any) => asset.assetId === 'rt.planet-map.map-122');
+        mismatched.textureKey = 'wrongPlanetKey';
+        await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+
+        const privateDirectory = path.join(projectRoot, 'private', 'assets', 'Planets');
+        await mkdir(privateDirectory, { recursive: true });
+        const existingDestination = path.join(privateDirectory, PLANET_FILES[0]);
+        const userOwnedBytes = Buffer.from('preserve existing user-owned destination');
+        await writeFile(existingDestination, userOwnedBytes);
+        const publicBefore = new Map(
+            await Promise.all([...PLANET_FILES, ...DEFERRED_FILES].map(async (filename) => [
+                filename,
+                await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', filename))
+            ] as const))
+        );
+
+        await assert.rejects(
+            migratePlanetAssetsPrivate({ projectRoot, apply: true }),
+            /registry identity does not match the approved planet asset/
+        );
+
+        assert.deepEqual(await readFile(existingDestination), userOwnedBytes);
+        assert.deepEqual(
+            (await readdir(privateDirectory)).sort(),
+            [PLANET_FILES[0]]
+        );
+        for (const [filename, bytes] of publicBefore) {
+            assert.deepEqual(
+                await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', filename)),
+                bytes
+            );
+        }
+    });
+});
+
 test('partial no-overwrite publication rolls back only files installed by this migration', async () => {
     await createFixture(async (projectRoot) => {
         let links = 0;

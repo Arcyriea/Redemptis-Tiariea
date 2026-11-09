@@ -3,7 +3,7 @@ import { constants as fsConstants } from 'node:fs';
 import { copyFile, link, lstat, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROJECT_ROOT } from './asset-registry.mjs';
+import { PROJECT_ROOT, readAssetRegistry } from './asset-registry.mjs';
 import { validatePng } from './validate-png.mjs';
 
 const PLANET_ASSETS = Object.freeze([
@@ -57,6 +57,20 @@ async function readRegularFile(filePath, label) {
 }
 
 async function inspectPlan(projectRoot) {
+    const registry = await readAssetRegistry(projectRoot);
+    for (const expected of PLANET_ASSETS) {
+        const registered = registry.assets.find((asset) => asset.assetId === expected.assetId);
+        if (!registered
+            || registered.assetId !== expected.assetId
+            || registered.logicalPath !== expected.logicalPath
+            || registered.textureKey !== expected.textureKey
+            || registered.contentType !== 'PNG'
+            || !Array.isArray(registered.aliases)
+            || registered.aliases.length !== 0) {
+            fail(`asset registry identity does not match the approved planet asset "${expected.assetId}"`);
+        }
+    }
+
     const publicRoot = path.join(projectRoot, 'public');
     const publicAssets = path.join(publicRoot, 'assets');
     const publicPlanets = path.join(publicAssets, 'Planets');

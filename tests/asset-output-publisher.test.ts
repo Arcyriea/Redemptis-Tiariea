@@ -131,7 +131,7 @@ async function createFixture(run: (projectRoot: string) => Promise<void>) {
         const logicalPath = asset.logicalPath.slice('assets/'.length).split('/').join(path.sep);
         const privatePath = path.join(projectRoot, 'private', 'assets', logicalPath);
         await mkdir(path.dirname(privatePath), { recursive: true });
-        const bytes = await readFile(path.join(REPOSITORY_ROOT, 'private', 'assets', logicalPath));
+        const bytes = await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', logicalPath));
         await writeFile(privatePath, bytes);
     }
 
