@@ -21,7 +21,7 @@ function applyAssetCacheHeaders(server) {
         const pathname = (request.url ?? '').split('?', 1)[0];
         if (pathname === '/assets/asset-manifest.json') {
             response.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
-        } else if (/^\/assets\/[a-z0-9]+(?:-[a-z0-9]+)*\.[a-f0-9]{64}\.bin$/.test(pathname)) {
+        } else if (/^\/assets\/bundles\/[a-z0-9]+(?:-[a-z0-9]+)*\.[a-f0-9]{64}\.bin$/.test(pathname)) {
             response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
         next();

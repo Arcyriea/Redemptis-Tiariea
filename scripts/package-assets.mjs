@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
 import { buildRuntimeContract, derivePlanetIdentity, readPlanetApprovals, readPlanetPlacements, renderRuntimeContract } from './asset-contract.mjs';
+import { parseBundleUrl } from '../src/assets/rtabContractShared.mjs';
 
 const HEADER_SIZE = 64;
 const INDEX_HEADER_SIZE = 28;
@@ -17,7 +18,6 @@ const UINT32_MAX = 0xffffffffn;
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const CONTENT_TYPE_CODES = Object.freeze({ SVG: 0, PNG: 1 });
-const FIXED_BUNDLE_PATH_PATTERN = /^\/assets\/([a-z0-9]+(?:-[a-z0-9]+)*)\.([a-f0-9]{64})\.bin$/;
 
 function sha256(bytes) {
     return createHash('sha256').update(bytes).digest();
@@ -207,7 +207,7 @@ function buildManifestSchema() {
                     type: 'object', additionalProperties: false,
                     required: ['slot', 'order', 'textureKey'],
                     properties: {
-                        slot: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*$' },
+                        slot: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$' },
                         order: { type: 'integer', minimum: 1 },
                         textureKey: { type: 'string', pattern: '^planetMap[1-9][0-9]*$' }
                     }
@@ -238,7 +238,7 @@ function buildManifestSchema() {
                     required: ['bundleId', 'bundleFile', 'formatVersion', 'assetCount', 'bundleSha256'],
                     properties: {
                         bundleId: { type: 'string', minLength: 1 },
-                        bundleFile: { type: 'string', pattern: '^/assets/[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-f0-9]{64}\\.bin$' },
+                        bundleFile: { type: 'string', pattern: '^/assets/bundles/[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-f0-9]{64}\\.bin$' },
                         formatVersion: { enum: ['1.0', '1.1'] },
                         assetCount: { type: 'integer', minimum: 1 },
                         bundleSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' }
@@ -486,7 +486,7 @@ export async function createAssetPackageOutputs({ projectRoot = PROJECT_ROOT } =
             validatedAssets.find((validated) => validated.assetId === asset.assetId)
         ));
         const bundleResult = createBundle(bundleId, '', members);
-        const bundleFile = `/assets/${bundleId}.${bundleResult.bundleSha256}.bin`;
+        const bundleFile = `/assets/bundles/${bundleId}.${bundleResult.bundleSha256}.bin`;
         bundleResult.bundleFile = bundleFile;
         outputFiles.set(safeBundlePath(projectRoot, bundleFile), bundleResult.bytes);
         manifestBundles.push({
@@ -827,7 +827,11 @@ function validateManifest(manifest, assets, approvals, placements) {
             ['bundleId', 'bundleFile', 'formatVersion', 'assetCount', 'bundleSha256'],
             `RTAB manifest bundle "${bundleId}"`
         );
-        if (!actual || actual.bundleFile !== `/assets/${bundleId}.${actual.bundleSha256}.bin`
+        const parsedBundleUrl = actual && parseBundleUrl(actual.bundleFile);
+        if (!actual || !parsedBundleUrl
+            || parsedBundleUrl.bundleId !== bundleId
+            || parsedBundleUrl.digest !== actual.bundleSha256
+            || actual.bundleFile !== `/assets/bundles/${bundleId}.${actual.bundleSha256}.bin`
             || actual.formatVersion !== (expected.assets.some((asset) => asset.contentType === 'PNG') ? '1.1' : '1.0')
             || actual.assetCount !== expected.assets.length) {
             throw new Error(`RTAB manifest bundle metadata does not match derived category "${bundleId}"`);

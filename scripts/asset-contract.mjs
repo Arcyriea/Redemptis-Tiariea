@@ -1,9 +1,15 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import {
+    MANIFEST_SCHEMA_VERSION,
+    RUNTIME_CONTRACT_SCHEMA_VERSION,
+    canonicalizeGenerationInput,
+    compareText,
+    computeGenerationId
+} from '../src/assets/rtabContractShared.mjs';
 
-export const MANIFEST_SCHEMA_VERSION = '1.3';
-export const RUNTIME_CONTRACT_SCHEMA_VERSION = '1';
+export { MANIFEST_SCHEMA_VERSION, RUNTIME_CONTRACT_SCHEMA_VERSION };
 
 export const PLANET_FILENAME_PATTERN = /^Map-([1-9][0-9]*)\.png$/;
 
@@ -49,7 +55,7 @@ export async function readPlanetPlacements(projectRoot) {
         throw new Error('Planet runtime references must contain schemaVersion 1 and named placements');
     }
     const placements = Object.entries(value.placements).map(([slot, entry]) => {
-        if (!/^[A-Za-z][A-Za-z0-9]*$/.test(slot) || !entry
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(slot) || !entry
             || !Number.isSafeInteger(entry.order) || entry.order < 1
             || typeof entry.textureKey !== 'string' || !/^planetMap[1-9][0-9]*$/.test(entry.textureKey)) {
             throw new Error(`Invalid named planet placement "${slot}"`);
@@ -68,28 +74,11 @@ export async function readPlanetPlacements(projectRoot) {
     return placements;
 }
 
-function canonical(value) {
-    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-    if (value && typeof value === 'object') {
-        return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
-    }
-    return JSON.stringify(value);
-}
-
-function compareText(left, right) {
-    return left < right ? -1 : left > right ? 1 : 0;
-}
-
 export function calculateGenerationId({ assets, bundles, approvals, placements }) {
-    const input = {
-        runtimeContractSchemaVersion: RUNTIME_CONTRACT_SCHEMA_VERSION,
-        manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
-        assets: [...assets].sort((a, b) => compareText(a.assetId, b.assetId)),
-        approvedPlanetSourceSha256: Object.fromEntries([...approvals].sort(([a], [b]) => compareText(a, b))),
-        bundles: [...bundles].sort((a, b) => compareText(a.bundleId, b.bundleId)),
-        activePlanetPlacements: [...placements].sort((a, b) => compareText(a.slot, b.slot))
-    };
-    return createHash('sha256').update(canonical(input), 'utf8').digest('hex');
+    const input = canonicalizeGenerationInput({ assets, bundles, approvals, placements });
+    return computeGenerationId(input, (serialized) => (
+        createHash('sha256').update(serialized, 'utf8').digest('hex')
+    ));
 }
 
 export function renderRuntimeContract(contract) {
@@ -110,7 +99,6 @@ export function buildRuntimeContract(manifest, approvals, placements) {
         generationId,
         approvedPlanetSourceSha256: Object.fromEntries([...approvals].sort(([a], [b]) => compareText(a, b))),
         activePlanetPlacements: [...(manifest.activePlanetPlacements ?? placements)].sort((a, b) => compareText(a.slot, b.slot)),
-        assets: manifest.assets,
-        bundles: manifest.bundles
+        assets: manifest.assets
     };
 }

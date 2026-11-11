@@ -3,6 +3,7 @@ import { hostname } from 'node:os';
 import {
     link,
     lstat,
+    mkdir,
     open,
     readFile,
     readdir,
@@ -934,6 +935,7 @@ function outputOrder([leftPath], [rightPath]) {
 }
 
 async function stageOutput(entry, bytes) {
+    await mkdir(path.dirname(entry.temporary), { recursive: true });
     await writeFile(entry.temporary, bytes, { flag: 'wx' });
     await syncFile(entry.temporary);
     const state = await fileState(entry.temporary);
@@ -947,6 +949,7 @@ export async function publishAssetOutputs({
     outputs,
     stalePaths = [],
     linkFile = link,
+    onOutputPublished = async () => {},
     validatePublishedOutputs
 }) {
     if (typeof validatePublishedOutputs !== 'function') {
@@ -962,7 +965,7 @@ export async function publishAssetOutputs({
         const newBytes = toOutputBytes(contents);
         const prior = await fileState(absoluteDestination);
         const relative = relativePath(projectRoot, absoluteDestination);
-        const addressed = /^public\/assets\/([a-z0-9]+(?:-[a-z0-9]+)*)\.([a-f0-9]{64})\.bin$/.exec(relative);
+        const addressed = /^public\/assets\/bundles\/([a-z0-9]+(?:-[a-z0-9]+)*)\.([a-f0-9]{64})\.bin$/.exec(relative);
         if (addressed) {
             const expectedHash = addressed[2];
             const newHash = hash(newBytes);
@@ -1054,6 +1057,7 @@ export async function publishAssetOutputs({
         await appendJournalState(journal, 'publishing');
         for (const entry of outputEntries) {
             if (entry.unchanged) {
+                await onOutputPublished(entry.destination);
                 continue;
             }
             const prior = await fileState(entry.destination);
@@ -1092,6 +1096,7 @@ export async function publishAssetOutputs({
                 { exists: true, sha256: entry.newSha256 },
                 () => createPublicationLink(entry.temporary, entry.destination, linkFile)
             );
+            await onOutputPublished(entry.destination);
         }
 
         await appendJournalState(journal, 'validating');

@@ -68,7 +68,7 @@ test('rejects an altered planet payload independently of manifest metadata', () 
     );
 });
 
-test('a browser refresh during publication fails generation mismatch before Phaser construction', async () => {
+test('preflight generation mismatch prevents the injected game factory from constructing Phaser', async () => {
     const manifest = await readJson('public/assets/asset-manifest.json');
     (manifest as any).generationId = '0'.repeat(64);
     let bundleRequests = 0;

@@ -31,7 +31,7 @@
         "properties": {
           "slot": {
             "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
           },
           "order": {
             "type": "integer",
@@ -113,7 +113,7 @@
           },
           "bundleFile": {
             "type": "string",
-            "pattern": "^/assets/[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-f0-9]{64}\\.bin$"
+            "pattern": "^/assets/bundles/[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-f0-9]{64}\\.bin$"
           },
           "formatVersion": {
             "enum": [

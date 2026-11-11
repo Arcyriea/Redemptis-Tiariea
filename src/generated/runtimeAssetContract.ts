@@ -2,7 +2,7 @@
 export const runtimeAssetContract = Object.freeze({
   "runtimeContractSchemaVersion": "1",
   "manifestSchemaVersion": "1.3",
-  "generationId": "5002ec09ebd3277e4a4e307751a0d1c04c6f6aadc0c259ad43dd0ad778634293",
+  "generationId": "4b883c0b0dd8ba678d5138a0a0b443e4a70840f3d0563d34509a098c53c2ee61",
   "approvedPlanetSourceSha256": {
     "assets/Planets/Map-111.png": "83d39b7a7603f574f47cee57c4d9b12b0b468b469fece0ffe7765d921f067ea1",
     "assets/Planets/Map-122.png": "35f8af626f4d7162a2926ef3dad6cdec36610cfd6f3acac86a1547d764081f7e",
@@ -10,17 +10,17 @@ export const runtimeAssetContract = Object.freeze({
   },
   "activePlanetPlacements": [
     {
-      "slot": "existingPlanetPlacement1",
+      "slot": "orbit_slot_1",
       "order": 1,
       "textureKey": "planetMap692"
     },
     {
-      "slot": "existingPlanetPlacement2",
+      "slot": "orbit_slot_2",
       "order": 2,
       "textureKey": "planetMap122"
     },
     {
-      "slot": "existingPlanetPlacement3",
+      "slot": "orbit_slot_3",
       "order": 3,
       "textureKey": "planetMap111"
     }
@@ -337,36 +337,6 @@ export const runtimeAssetContract = Object.freeze({
       "contentType": "SVG",
       "sourceSha256": "696f9aacb67fdcdaea984da77b144952556ba1d0d6f3309f4b8edfdc36e9f75e",
       "bundleId": "turrets-platforms"
-    }
-  ],
-  "bundles": [
-    {
-      "bundleId": "components",
-      "bundleFile": "/assets/components.c765204592f66b0431a41b7c20a3f4ff58559757883aa39f0a81ad864a1928df.bin",
-      "formatVersion": "1.0",
-      "assetCount": 19,
-      "bundleSha256": "c765204592f66b0431a41b7c20a3f4ff58559757883aa39f0a81ad864a1928df"
-    },
-    {
-      "bundleId": "planets",
-      "bundleFile": "/assets/planets.6d1b1206f74f207f7d8af01ab3a9d0b768d0f9021fe456753f894bb04a411814.bin",
-      "formatVersion": "1.1",
-      "assetCount": 3,
-      "bundleSha256": "6d1b1206f74f207f7d8af01ab3a9d0b768d0f9021fe456753f894bb04a411814"
-    },
-    {
-      "bundleId": "ships",
-      "bundleFile": "/assets/ships.5a88e030dfbd0cecc8d2b51acf7e80dce2bdb36862838ba0ea113d84707fd65b.bin",
-      "formatVersion": "1.0",
-      "assetCount": 10,
-      "bundleSha256": "5a88e030dfbd0cecc8d2b51acf7e80dce2bdb36862838ba0ea113d84707fd65b"
-    },
-    {
-      "bundleId": "turrets-platforms",
-      "bundleFile": "/assets/turrets-platforms.943e47cfed1ff6e28bc4bca70efe0f42c9d1403b8e2a17c24643f8a61c9e126e.bin",
-      "formatVersion": "1.0",
-      "assetCount": 2,
-      "bundleSha256": "943e47cfed1ff6e28bc4bca70efe0f42c9d1403b8e2a17c24643f8a61c9e126e"
     }
   ]
 } as const);

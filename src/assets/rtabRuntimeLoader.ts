@@ -1,5 +1,11 @@
 import { publicSvgTextures } from '../generated/publicSvgManifest';
 import { runtimeAssetContract } from '../generated/runtimeAssetContract';
+import {
+    canonicalizeGenerationInput,
+    compareText,
+    computeGenerationId,
+    parseBundleUrl
+} from './rtabContractShared.mjs';
 
 const HEADER_SIZE = 64;
 const INDEX_HEADER_SIZE = 28;
@@ -20,7 +26,7 @@ export interface RuntimeAssetMetadata {
     assetId: string;
     logicalPath: string;
     textureKey: string;
-    aliases: string[];
+    aliases: readonly string[];
     contentType: ContentType;
     sourceSha256: string;
     bundleId: string;
@@ -66,7 +72,6 @@ export interface DecodedRecord {
 }
 
 const contractAssets = runtimeAssetContract.assets as readonly RuntimeAssetMetadata[];
-const contractBundles = runtimeAssetContract.bundles as readonly RuntimeBundleMetadata[];
 const contractById = new Map(contractAssets.map((asset) => [asset.assetId, asset]));
 function fail(message: string): never {
     throw new Error(`RTAB runtime preflight: ${message}`);
@@ -119,27 +124,38 @@ function validateExpectedSvgIdentity(asset: RuntimeAssetMetadata): void {
     }
 }
 
-export function validateRuntimeManifest(value: unknown): RuntimeManifest {
+export async function validateRuntimeManifest(
+    value: unknown,
+    subtle: SubtleCrypto = globalThis.crypto.subtle
+): Promise<RuntimeManifest> {
     if (!isRecord(value)) fail('manifest must be an object.');
     exactKeys(value, ['manifestSchemaVersion', 'generationId', 'activePlanetPlacements', 'assets', 'bundles'], 'manifest');
     if (value.manifestSchemaVersion !== '1.3') fail('manifestSchemaVersion must be 1.3.');
-    if (value.generationId !== runtimeAssetContract.generationId) {
-        fail('manifest generation ID differs from the loaded runtime contract.');
+    if (runtimeAssetContract.runtimeContractSchemaVersion !== '1'
+        || runtimeAssetContract.manifestSchemaVersion !== '1.3') {
+        fail('generated runtime contract schema versions are unsupported.');
     }
     if (!Array.isArray(value.assets) || !Array.isArray(value.bundles) || !Array.isArray(value.activePlanetPlacements)) {
         fail('manifest asset, bundle, or active-placement inventory is invalid.');
     }
-    if (value.assets.length !== contractAssets.length || value.bundles.length !== contractBundles.length) {
-        fail('manifest inventory counts differ from the generated runtime contract.');
+    if (typeof value.generationId !== 'string' || !SHA256_PATTERN.test(value.generationId)
+        || value.assets.length !== contractAssets.length) {
+        fail('manifest generation ID or asset inventory count is invalid.');
     }
-    const sortPlacements = (entries: unknown[]) => entries.slice().sort((left: any, right: any) => (
-        String(left?.slot).localeCompare(String(right?.slot))
-    ));
-    if (JSON.stringify(sortPlacements(value.activePlanetPlacements))
-        !== JSON.stringify(sortPlacements(runtimeAssetContract.activePlanetPlacements as unknown[]))) {
-        fail('manifest active planet placements differ from the generated runtime contract.');
+    const placementSlots = new Set<string>();
+    const placementOrders = new Set<number>();
+    for (const item of value.activePlanetPlacements) {
+        if (!isRecord(item)) fail('active planet placement must be an object.');
+        exactKeys(item, ['slot', 'order', 'textureKey'], 'active planet placement');
+        if (typeof item.slot !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(item.slot)
+            || !Number.isSafeInteger(item.order) || Number(item.order) < 1
+            || typeof item.textureKey !== 'string' || !/^planetMap[1-9][0-9]*$/.test(item.textureKey)
+            || placementSlots.has(item.slot) || placementOrders.has(Number(item.order))) {
+            fail('active planet placements contain invalid or duplicate slots, orders, or keys.');
+        }
+        placementSlots.add(item.slot);
+        placementOrders.add(Number(item.order));
     }
-
     const assetsById = new Map<string, RuntimeAssetMetadata>();
     const textureNames = new Set<string>();
     for (const item of value.assets) {
@@ -179,6 +195,10 @@ export function validateRuntimeManifest(value: unknown): RuntimeManifest {
         fail('manifest does not exactly cover the generated runtime asset inventory.');
     }
 
+    const expectedBundleAssets = new Map<string, RuntimeAssetMetadata[]>();
+    for (const asset of assetsById.values()) {
+        expectedBundleAssets.set(asset.bundleId, [...(expectedBundleAssets.get(asset.bundleId) ?? []), asset]);
+    }
     const bundlesById = new Map<string, RuntimeBundleMetadata>();
     for (const item of value.bundles) {
         if (!isRecord(item)) fail('manifest bundle must be an object.');
@@ -189,21 +209,44 @@ export function validateRuntimeManifest(value: unknown): RuntimeManifest {
             || !Number.isInteger(bundle.assetCount) || !SHA256_PATTERN.test(bundle.bundleSha256)) {
             fail('manifest bundle contains invalid field values.');
         }
-        const expected = contractBundles.find((candidate) => candidate.bundleId === bundle.bundleId);
-        if (!expected || bundle.bundleFile !== expected.bundleFile
-            || bundle.formatVersion !== expected.formatVersion || bundle.assetCount !== expected.assetCount) {
-            fail(`manifest bundle metadata is invalid for "${bundle.bundleId}".`);
+        const matchingAssets = expectedBundleAssets.get(bundle.bundleId);
+        const parsedUrl = parseBundleUrl(bundle.bundleFile);
+        const expectedFormat: FormatVersion | null = matchingAssets?.some((asset) => asset.contentType === 'PNG') ? '1.1' : '1.0';
+        if (!matchingAssets || !parsedUrl || parsedUrl.bundleId !== bundle.bundleId
+            || parsedUrl.digest !== bundle.bundleSha256
+            || bundle.bundleFile !== `/assets/bundles/${bundle.bundleId}.${bundle.bundleSha256}.bin`
+            || bundle.formatVersion !== expectedFormat || bundle.assetCount !== matchingAssets.length) {
+            fail(`manifest bundle metadata or content-addressed URL is invalid for "${bundle.bundleId}".`);
         }
         if (bundlesById.has(bundle.bundleId)) fail(`manifest repeats bundle "${bundle.bundleId}".`);
-        const matchingAssets = [...assetsById.values()].filter((asset) => asset.bundleId === bundle.bundleId);
-        if (matchingAssets.length !== expected.assetCount) fail(`bundle "${bundle.bundleId}" has an incorrect asset count.`);
         if (bundle.formatVersion === '1.0' && matchingAssets.some((asset) => asset.contentType !== 'SVG')) {
             fail(`RTAB 1.0 bundle "${bundle.bundleId}" contains a non-SVG asset.`);
         }
         bundlesById.set(bundle.bundleId, bundle);
     }
-    if (bundlesById.size !== contractBundles.length
-        || contractBundles.some((bundle) => !bundlesById.has(bundle.bundleId))) fail('required bundle coverage is incomplete.');
+    if (bundlesById.size !== expectedBundleAssets.size
+        || [...expectedBundleAssets.keys()].some((bundleId) => !bundlesById.has(bundleId))) {
+        fail('manifest does not exactly cover the derived bundle inventory.');
+    }
+
+    const generationInput = canonicalizeGenerationInput({
+        assets: value.assets as RuntimeAssetMetadata[],
+        bundles: value.bundles as RuntimeBundleMetadata[],
+        approvals: runtimeAssetContract.approvedPlanetSourceSha256,
+        placements: value.activePlanetPlacements
+    });
+    const calculatedGenerationId = await computeGenerationId(generationInput, async (serialized: string) => (
+        hex(new Uint8Array(await subtle.digest('SHA-256', new TextEncoder().encode(serialized))))
+    ));
+    if (calculatedGenerationId !== value.generationId
+        || calculatedGenerationId !== runtimeAssetContract.generationId) {
+        fail('manifest generation ID does not match the independently computed runtime contract.');
+    }
+    const sortPlacements = (entries: readonly unknown[]) => [...entries].sort((left: any, right: any) => compareText(left.slot, right.slot));
+    if (JSON.stringify(sortPlacements(value.activePlanetPlacements))
+        !== JSON.stringify(sortPlacements(runtimeAssetContract.activePlanetPlacements))) {
+        fail('manifest active planet placements differ from the generated runtime contract.');
+    }
 
     return value as unknown as RuntimeManifest;
 }
@@ -449,7 +492,7 @@ export async function preflightRtabAssets(options: RuntimePreflightOptions = {})
     const decodeImage = options.decodeImage ?? decodeBrowserImage;
     const manifestResponse = await fetcher(options.manifestUrl ?? '/assets/asset-manifest.json', { cache: 'no-store' });
     if (!manifestResponse.ok) fail(`manifest request failed with HTTP ${manifestResponse.status}.`);
-    const manifest = validateRuntimeManifest(await manifestResponse.json());
+    const manifest = await validateRuntimeManifest(await manifestResponse.json(), subtle);
     const assetsByBundle = new Map<string, RuntimeAssetMetadata[]>();
     for (const asset of manifest.assets) {
         assetsByBundle.set(asset.bundleId, [...(assetsByBundle.get(asset.bundleId) ?? []), asset]);

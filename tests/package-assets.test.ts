@@ -252,7 +252,7 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
             bundleFile: `/assets/${bundle.bundleId}.bin`
         }))
     };
-    for (const bundle of fixedManifest.bundles) {
+    for (const bundle of currentManifest.bundles) {
         await writeFile(
             path.join(publicAssetsRoot, `${bundle.bundleId}.bin`),
             await readFile(path.join(REPOSITORY_ROOT, 'public', bundle.bundleFile.slice(1)))
@@ -506,7 +506,7 @@ test('folder-derived packaging emits three SVG RTAB 1.0 bundles and a planet PNG
         assert.match(manifest.generationId, /^[a-f0-9]{64}$/);
         assert.deepEqual(schema.properties.assets.items.properties.contentType.enum, ['SVG', 'PNG']);
         assert.ok(manifest.bundles.every((bundle: any) => (
-            bundle.bundleFile === `/assets/${bundle.bundleId}.${bundle.bundleSha256}.bin`
+            bundle.bundleFile === `/assets/bundles/${bundle.bundleId}.${bundle.bundleSha256}.bin`
         )));
         assert.equal(manifest.assets.filter((asset: any) => asset.contentType === 'SVG').length, 31);
         assert.equal(manifest.assets.filter((asset: any) => asset.contentType === 'PNG').length, 3);
@@ -821,6 +821,19 @@ test('lifecycle publishes four mixed-asset bundles, preserves the 31-entry SVG r
     await createProjectFixture(async (projectRoot) => {
         const generated = await prepareAssets({ projectRoot });
         assert.equal(generated.mode, 'package');
+        assert.equal(generated.outputFiles.size, 8);
+        const generatedManifest = generated.outputFiles.get(
+            path.join(projectRoot, 'public', 'assets', 'asset-manifest.json')
+        ) as string;
+        const generatedMetadata = JSON.parse(generatedManifest);
+        const expectedOutputPaths = [
+            ...generatedMetadata.bundles.map((bundle: any) => path.resolve(projectRoot, 'public', bundle.bundleFile.slice(1))),
+            path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'),
+            path.join(projectRoot, 'public', 'assets', 'asset-manifest-schema.json'),
+            path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts'),
+            path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts')
+        ].sort();
+        assert.deepEqual([...generated.outputFiles.keys()].sort(), expectedOutputPaths);
         const runtimeManifestPath = path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts');
         const runtimeManifest = await readFile(runtimeManifestPath, 'utf8');
         const baselineRuntimeManifest = await readFile(path.join(REPOSITORY_ROOT, 'src', 'generated', 'publicSvgManifest.ts'), 'utf8');
@@ -873,7 +886,7 @@ test('publication replaces the exact historical transitional planet bundle with 
         ]);
         assert.deepEqual(await readFile(path.join(projectRoot, 'public', 'assets', 'planets.bin')), oldPlanetBundle);
         const addressedPlanet = manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets');
-        assert.equal(addressedPlanet.bundleFile, `/assets/planets.${addressedPlanet.bundleSha256}.bin`);
+        assert.equal(addressedPlanet.bundleFile, `/assets/bundles/planets.${addressedPlanet.bundleSha256}.bin`);
         assert.notEqual(addressedPlanet.bundleFile, '/assets/planets.bin');
     });
 });

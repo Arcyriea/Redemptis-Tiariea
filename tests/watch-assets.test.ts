@@ -16,12 +16,14 @@ function createFakeServer() {
     const watcher = new FakeWatcher();
     const messages: string[] = [];
     const reloads: object[] = [];
+    const middlewareHandlers: Array<(request: any, response: any, next: () => void) => void> = [];
     return {
         watcher,
         messages,
         reloads,
         ws: { send: (message: object) => reloads.push(message) },
-        middlewares: { use: () => {} },
+        middlewareHandlers,
+        middlewares: { use: (handler: any) => middlewareHandlers.push(handler) },
         config: {
             logger: {
                 info: (message: string) => messages.push(message),
@@ -201,12 +203,28 @@ test('asset watcher logs failed reconciliations without retrying unchanged inval
     await plugin.closeServer();
 });
 
-test('asset watcher suppresses HMR for editable contract inputs and generated runtime outputs', async () => {
+test('asset watcher suppresses premature HMR and applies manifest and immutable bundle cache headers', async () => {
     const plugin = createAssetWatcherPlugin({ projectRoot: REPOSITORY_ROOT, prepare: async () => {} });
+    const server = createFakeServer();
+    await plugin.configureServer(server);
     const stale = plugin.handleHotUpdate({ file: path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json') });
     const generated = plugin.handleHotUpdate({ file: path.join(REPOSITORY_ROOT, 'src', 'generated', 'runtimeAssetContract.ts') });
     assert.deepEqual(stale, []);
     assert.deepEqual(generated, []);
+
+    const middleware = server.middlewareHandlers[0];
+    assert.ok(middleware);
+    const cacheFor = (url: string) => {
+        const headers: Record<string, string> = {};
+        middleware({ url }, { setHeader: (name: string, value: string) => { headers[name] = value; } }, () => {});
+        return headers['Cache-Control'];
+    };
+    assert.equal(cacheFor('/assets/asset-manifest.json'), 'no-store, max-age=0, must-revalidate');
+    assert.equal(
+        cacheFor(`/assets/bundles/components.${'a'.repeat(64)}.bin`),
+        'public, max-age=31536000, immutable'
+    );
+    await plugin.closeServer();
 });
 
 test('asset watcher disposal cancels pending reconciliation', async () => {

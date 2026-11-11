@@ -8,6 +8,8 @@ import {
     validateRuntimeManifest,
     type RuntimeBundleMetadata
 } from '../src/assets/rtabRuntimeLoader';
+import { runtimeAssetContract } from '../src/generated/runtimeAssetContract';
+import { canonicalizeGenerationInput, computeGenerationId } from '../src/assets/rtabContractShared.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -27,7 +29,7 @@ function resealIndexAndBundle(bytes: Buffer, sourceBundle: RuntimeBundleMetadata
 }
 
 test('validates schema 1.3 and the generated current 34-asset inventory', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     assert.equal(manifest.assets.length, 34);
     assert.equal(manifest.assets.filter((asset) => asset.contentType === 'SVG').length, 31);
     assert.equal(manifest.assets.filter((asset) => asset.contentType === 'PNG').length, 3);
@@ -39,21 +41,52 @@ test('validates schema 1.3 and the generated current 34-asset inventory', async 
     ]);
 });
 
+test('Node and Web Crypto derive the same generation ID without bundle metadata in the runtime contract', async () => {
+    const manifest = await readManifest();
+    const input = canonicalizeGenerationInput({
+        assets: manifest.assets,
+        bundles: manifest.bundles,
+        approvals: runtimeAssetContract.approvedPlanetSourceSha256,
+        placements: manifest.activePlanetPlacements
+    });
+    const nodeId = computeGenerationId(input, (serialized: string) => (
+        createHash('sha256').update(serialized, 'utf8').digest('hex')
+    ));
+    const browserId = await computeGenerationId(input, async (serialized: string) => {
+        const bytes = new TextEncoder().encode(serialized);
+        return Array.from(new Uint8Array(await webcrypto.subtle.digest('SHA-256', bytes)), (byte) => (
+            byte.toString(16).padStart(2, '0')
+        )).join('');
+    });
+    assert.equal(typeof nodeId, 'string');
+    assert.equal(nodeId, browserId);
+    assert.equal(nodeId, manifest.generationId);
+    assert.equal(nodeId, runtimeAssetContract.generationId);
+    assert.equal('bundles' in runtimeAssetContract, false);
+});
+
 test('rejects an unsupported manifest version, duplicate identity, and unexpected identity', async () => {
     const source = await readManifest();
-    assert.throws(() => validateRuntimeManifest({ ...source, manifestSchemaVersion: '1.1' }), /manifestSchemaVersion/);
+    await assert.rejects(validateRuntimeManifest({ ...source, manifestSchemaVersion: '1.1' }, webcrypto.subtle), /manifestSchemaVersion/);
 
     const duplicate = structuredClone(source);
     duplicate.assets[1].assetId = duplicate.assets[0].assetId;
-    assert.throws(() => validateRuntimeManifest(duplicate), /identity differs|repeats asset ID/);
+    await assert.rejects(validateRuntimeManifest(duplicate, webcrypto.subtle), /identity differs|repeats asset ID/);
 
     const unexpected = structuredClone(source);
     unexpected.assets[0].assetId = 'rt.unexpected';
-    assert.throws(() => validateRuntimeManifest(unexpected), /identity differs/);
+    await assert.rejects(validateRuntimeManifest(unexpected, webcrypto.subtle), /identity differs/);
+
+    const wrongFilenameDigest = structuredClone(source);
+    wrongFilenameDigest.bundles[0].bundleFile = wrongFilenameDigest.bundles[0].bundleFile.replace(
+        /\.([a-f0-9]{64})\.bin$/,
+        `.${'0'.repeat(64)}.bin`
+    );
+    await assert.rejects(validateRuntimeManifest(wrongFilenameDigest, webcrypto.subtle), /content-addressed URL/);
 });
 
 test('parses RTAB 1.0 SVG and RTAB 1.1 PNG bundles and verifies each record', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     for (const bundle of manifest.bundles) {
         const bundleBytes = await readFile(path.join(ROOT, 'public', bundle.bundleFile.slice(1)));
         const assets = manifest.assets
@@ -66,7 +99,7 @@ test('parses RTAB 1.0 SVG and RTAB 1.1 PNG bundles and verifies each record', as
 });
 
 test('rejects altered complete-bundle fingerprints', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     const bundle = manifest.bundles[0];
     const assets = manifest.assets.filter((asset) => asset.bundleId === bundle.bundleId)
         .sort((left, right) => left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0);
@@ -77,7 +110,7 @@ test('rejects altered complete-bundle fingerprints', async () => {
 });
 
 test('rejects unsupported header flags after the complete bundle hash is updated', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     const sourceBundle = manifest.bundles[0];
     const assets = manifest.assets.filter((asset) => asset.bundleId === sourceBundle.bundleId)
         .sort((left, right) => left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0);
@@ -88,7 +121,7 @@ test('rejects unsupported header flags after the complete bundle hash is updated
 });
 
 test('rejects an invalid index digest and truncated bundle data', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     const sourceBundle = manifest.bundles[0];
     const assets = manifest.assets.filter((asset) => asset.bundleId === sourceBundle.bundleId)
         .sort((left, right) => left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0);
@@ -106,7 +139,7 @@ test('rejects an invalid index digest and truncated bundle data', async () => {
 });
 
 test('rejects RTAB 1.0 PNG records and nonzero record flags', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     const sourceBundle = manifest.bundles.find((candidate) => candidate.bundleId === 'ships')!;
     const assets = manifest.assets.filter((asset) => asset.bundleId === sourceBundle.bundleId)
         .sort((left, right) => left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0);
@@ -128,7 +161,7 @@ test('rejects RTAB 1.0 PNG records and nonzero record flags', async () => {
 });
 
 test('rejects payload corruption, unsafe offsets, and source-fingerprint mismatches', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     const sourceBundle = manifest.bundles.find((candidate) => candidate.bundleId === 'ships')!;
     const assets = manifest.assets.filter((asset) => asset.bundleId === sourceBundle.bundleId)
         .sort((left, right) => left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0);
@@ -151,7 +184,7 @@ test('rejects payload corruption, unsafe offsets, and source-fingerprint mismatc
 });
 
 test('rejects manifest and binary format-version mismatches', async () => {
-    const manifest = validateRuntimeManifest(await readManifest());
+    const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
     const sourceBundle = manifest.bundles.find((candidate) => candidate.bundleId === 'ships')!;
     const assets = manifest.assets.filter((asset) => asset.bundleId === sourceBundle.bundleId)
         .sort((left, right) => left.assetId < right.assetId ? -1 : left.assetId > right.assetId ? 1 : 0);
