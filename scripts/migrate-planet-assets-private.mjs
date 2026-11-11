@@ -3,7 +3,8 @@ import { constants as fsConstants } from 'node:fs';
 import { copyFile, link, lstat, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROJECT_ROOT, readAssetRegistry } from './asset-registry.mjs';
+import { PROJECT_ROOT } from './asset-registry.mjs';
+import { derivePlanetIdentity, readPlanetApprovals } from './asset-contract.mjs';
 import { validatePng } from './validate-png.mjs';
 
 const PLANET_ASSETS = Object.freeze([
@@ -57,17 +58,12 @@ async function readRegularFile(filePath, label) {
 }
 
 async function inspectPlan(projectRoot) {
-    const registry = await readAssetRegistry(projectRoot);
+    const approvals = await readPlanetApprovals(projectRoot);
     for (const expected of PLANET_ASSETS) {
-        const registered = registry.assets.find((asset) => asset.assetId === expected.assetId);
-        if (!registered
-            || registered.assetId !== expected.assetId
-            || registered.logicalPath !== expected.logicalPath
-            || registered.textureKey !== expected.textureKey
-            || registered.contentType !== 'PNG'
-            || !Array.isArray(registered.aliases)
-            || registered.aliases.length !== 0) {
-            fail(`asset registry identity does not match the approved planet asset "${expected.assetId}"`);
+        const derived = derivePlanetIdentity(path.posix.basename(expected.logicalPath));
+        if (derived.assetId !== expected.assetId || derived.logicalPath !== expected.logicalPath
+            || derived.textureKey !== expected.textureKey || !approvals.has(expected.logicalPath)) {
+            fail(`planet approval identity does not match the original migration source "${expected.assetId}"`);
         }
     }
 
@@ -118,6 +114,9 @@ async function inspectPlan(projectRoot) {
         }
         const sourcePath = path.join(publicPlanets, filename);
         const source = await readRegularFile(sourcePath, 'public source');
+        if (sha256(source.bytes) !== approvals.get(expected.logicalPath)) {
+            fail(`public planet source does not match its approved fingerprint: ${expected.logicalPath}`);
+        }
         const pngInfo = await validatePng(source.bytes, expected);
         const destinationPath = path.join(privatePlanets, filename);
         let alreadyPresent = false;

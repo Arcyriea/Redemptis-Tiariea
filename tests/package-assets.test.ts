@@ -19,6 +19,7 @@ import {
 } from '../scripts/package-assets.mjs';
 import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from '../scripts/validate-png.mjs';
 import { prepareAssets } from '../scripts/prepare-assets.mjs';
+import { approvePlanetAssets } from '../scripts/approve-planet-assets.mjs';
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..');
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>';
@@ -229,7 +230,39 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     const registryPath = path.join(projectRoot, 'scripts', 'asset-registry.json');
     await mkdir(path.dirname(registryPath), { recursive: true });
     await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+    await writeFile(
+        path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json'))
+    );
     await mkdir(path.join(projectRoot, 'src', 'generated'), { recursive: true });
+    await mkdir(path.join(projectRoot, 'src', 'assets'), { recursive: true });
+    await writeFile(
+        path.join(projectRoot, 'src', 'assets', 'planet-runtime-references.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'src', 'assets', 'planet-runtime-references.json'))
+    );
+
+    const publicAssetsRoot = path.join(projectRoot, 'public', 'assets');
+    await mkdir(publicAssetsRoot, { recursive: true });
+    const currentManifest = JSON.parse(await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'asset-manifest.json'), 'utf8'));
+    const fixedManifest = {
+        manifestSchemaVersion: '1.2',
+        assets: currentManifest.assets,
+        bundles: currentManifest.bundles.map((bundle: any) => ({
+            ...bundle,
+            bundleFile: `/assets/${bundle.bundleId}.bin`
+        }))
+    };
+    for (const bundle of fixedManifest.bundles) {
+        await writeFile(
+            path.join(publicAssetsRoot, `${bundle.bundleId}.bin`),
+            await readFile(path.join(REPOSITORY_ROOT, 'public', bundle.bundleFile.slice(1)))
+        );
+    }
+    await writeFile(path.join(publicAssetsRoot, 'asset-manifest.json'), `${JSON.stringify(fixedManifest, null, 2)}\n`);
+    await writeFile(
+        path.join(publicAssetsRoot, 'asset-manifest-schema.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'asset-manifest-schema.json'))
+    );
 
     for (const asset of registry.assets) {
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
@@ -261,21 +294,25 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
 }
 
 async function snapshotOutputs(projectRoot: string) {
+    const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+    const currentManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     const paths = [
         path.join(projectRoot, 'public', 'assets', 'ships.bin'),
         path.join(projectRoot, 'public', 'assets', 'components.bin'),
         path.join(projectRoot, 'public', 'assets', 'turrets-platforms.bin'),
         path.join(projectRoot, 'public', 'assets', 'planets.bin'),
-        path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'),
+        manifestPath,
         path.join(projectRoot, 'public', 'assets', 'asset-manifest-schema.json'),
-        path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts')
+        path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts'),
+        path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts'),
+        ...currentManifest.bundles.map((bundle: any) => path.join(projectRoot, 'public', bundle.bundleFile.slice(1)))
     ];
     const snapshots = new Map<string, Buffer>();
     for (const filePath of paths) {
         try {
             snapshots.set(filePath, await readFile(filePath));
         } catch (error: any) {
-            if (error.code !== 'ENOENT' || !filePath.endsWith('planets.bin')) {
+            if (error.code !== 'ENOENT' || (!filePath.endsWith('planets.bin') && !filePath.includes('.bin'))) {
                 throw error;
             }
         }
@@ -372,6 +409,9 @@ async function addPreviouslyOwnedPlanetBundle(projectRoot: string) {
     const bytes = await createHistoricalPlanetBundle(projectRoot);
     assert.equal(hash(bytes), 'ef64dfb9a6491965d5b3870918f317f9a5632fb32eeb5c4be812b1f1829dc120');
     manifest.manifestSchemaVersion = '1.1';
+    delete manifest.generationId;
+    delete manifest.activePlanetPlacements;
+    for (const bundle of manifest.bundles) bundle.bundleFile = `/assets/${bundle.bundleId}.bin`;
     const planetBundle = manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets');
     planetBundle.formatVersion = '1.0';
     planetBundle.bundleSha256 = hash(bytes);
@@ -380,14 +420,14 @@ async function addPreviouslyOwnedPlanetBundle(projectRoot: string) {
     return bytes;
 }
 
-test('registry contains 31 SVGs and three planet PNGs while preserving runtime SVG identities', async () => {
+test('registry contains the 31 static SVGs while planets are derived from approved sources', async () => {
     const registry = await readAssetRegistry(REPOSITORY_ROOT);
     const runtimeByUrl = new Map(publicSvgTextures.map((asset) => [decodeURIComponent(asset.url.slice('/assets/'.length)), asset]));
 
     assert.equal(registry.registrySchemaVersion, '1.2');
-    assert.equal(registry.assets.length, 34);
+    assert.equal(registry.assets.length, 31);
     assert.equal(registry.assets.filter((asset) => asset.contentType === 'SVG' && asset.logicalPath.endsWith('.svg')).length, 31);
-    assert.equal(registry.assets.filter((asset) => asset.contentType === 'PNG' && asset.logicalPath.endsWith('.png')).length, 3);
+    assert.equal(registry.assets.filter((asset) => asset.contentType === 'PNG').length, 0);
     assert.equal('bundles' in registry, false);
     assert.equal(registry.assets.some((asset) => 'bundleId' in asset), false);
     assert.equal(publicSvgTextures.length, 31);
@@ -459,17 +499,15 @@ test('folder-derived packaging emits three SVG RTAB 1.0 bundles and a planet PNG
             ['ships', 10],
             ['turrets-platforms', 2]
         ]);
-        assert.equal(manifest.manifestSchemaVersion, '1.2');
+        assert.equal(manifest.manifestSchemaVersion, '1.3');
         assert.equal(manifest.assets.length, 34);
         assert.equal(manifest.bundles.length, 4);
-        assert.equal(schema.properties.manifestSchemaVersion.const, '1.2');
+        assert.equal(schema.properties.manifestSchemaVersion.const, '1.3');
+        assert.match(manifest.generationId, /^[a-f0-9]{64}$/);
         assert.deepEqual(schema.properties.assets.items.properties.contentType.enum, ['SVG', 'PNG']);
-        assert.deepEqual(manifest.bundles.map((bundle: any) => bundle.bundleFile).sort(), [
-            '/assets/components.bin',
-            '/assets/planets.bin',
-            '/assets/ships.bin',
-            '/assets/turrets-platforms.bin'
-        ]);
+        assert.ok(manifest.bundles.every((bundle: any) => (
+            bundle.bundleFile === `/assets/${bundle.bundleId}.${bundle.bundleSha256}.bin`
+        )));
         assert.equal(manifest.assets.filter((asset: any) => asset.contentType === 'SVG').length, 31);
         assert.equal(manifest.assets.filter((asset: any) => asset.contentType === 'PNG').length, 3);
         assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets').formatVersion, '1.1');
@@ -525,9 +563,8 @@ test('RTAB packages and preserves exactly the three approved private planet PNGs
         const { manifest, outputFiles } = await createAssetPackageOutputs({ projectRoot });
         assert.equal(manifest.assets.length, 34);
         assert.equal(manifest.assets.filter((asset: any) => asset.logicalPath.startsWith('assets/Planets/')).length, 3);
-        assert.equal(outputFiles.has(path.join(projectRoot, 'public', 'assets', 'planets.bin')), true);
         const planetBundle = manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets');
-        const planetBytes = outputFiles.get(path.join(projectRoot, 'public', 'assets', 'planets.bin')) as Buffer;
+        const planetBytes = outputFiles.get(path.join(projectRoot, 'public', planetBundle.bundleFile.slice(1))) as Buffer;
         const decoded = await validateRtabBundle(planetBytes, planetBundle, manifestExpectedAssets(manifest, 'planets'));
         assert.deepEqual(decoded.map((asset: any) => asset.assetId).sort(), PLANET_ASSETS.map((asset) => asset.assetId).sort());
         for (const [fileName, bytes] of original) {
@@ -543,7 +580,7 @@ test('RTAB packages and preserves exactly the three approved private planet PNGs
 test('missing private planet source fails explicitly', async () => {
     await createProjectFixture(async (projectRoot) => {
         await rm(path.join(projectRoot, 'private', 'assets', 'Planets', 'Map-111.png'));
-        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /could not find canonical source/);
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /stale|could not find canonical source/);
     });
 });
 
@@ -566,14 +603,43 @@ test('modified private planet sources fail and public copies are never packaging
         await rm(path.join(projectRoot, 'public', 'assets', 'Planets'), { recursive: true });
         const { manifest, outputFiles } = await createAssetPackageOutputs({ projectRoot });
         assert.equal(manifest.assets.length, 34);
-        assert.ok(outputFiles.has(path.join(projectRoot, 'public', 'assets', 'planets.bin')));
+        assert.ok(outputFiles.has(path.join(projectRoot, 'public', manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets').bundleFile.slice(1))));
+    });
+});
+
+test('newly discovered planets require explicit approval and register without changing active placements', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        const planetRoot = path.join(projectRoot, 'private', 'assets', 'Planets');
+        await writeFile(
+            path.join(planetRoot, 'Map-314.png'),
+            await readFile(path.join(planetRoot, 'Map-111.png'))
+        );
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /no approved fingerprint/);
+        await approvePlanetAssets({ projectRoot, apply: true });
+        const result = await createAssetPackageOutputs({ projectRoot });
+        assert.equal(result.manifest.assets.length, 35);
+        assert.ok(result.manifest.assets.some((asset: any) => (
+            asset.assetId === 'rt.planet-map.map-314' && asset.textureKey === 'planetMap314'
+        )));
+        assert.deepEqual(result.runtimeContract.activePlanetPlacements.map((entry: any) => entry.textureKey), [
+            'planetMap692', 'planetMap122', 'planetMap111'
+        ]);
+    });
+});
+
+test('removing a planet requires explicit approval pruning and active placements still block publication', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        await rm(path.join(projectRoot, 'private', 'assets', 'Planets', 'Map-111.png'));
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /stale/);
+        await approvePlanetAssets({ projectRoot, apply: true, prune: true });
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /references missing texture "planetMap111"/);
     });
 });
 
 test('an absent private Planets directory fails even when public planet PNGs exist', async () => {
     await createProjectFixture(async (projectRoot) => {
         await rm(path.join(projectRoot, 'private', 'assets', 'Planets'), { recursive: true });
-        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /could not find canonical source/);
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /stale|could not find canonical source/);
     });
 });
 
@@ -584,7 +650,7 @@ test('Planets directory rejects every unexpected file and nested directory', asy
         await writeFile(unexpectedFile, createPng());
         await assert.rejects(
             createAssetPackageOutputs({ projectRoot }),
-            /Unregistered asset source file/
+            /Invalid planet filename/
         );
         await rm(unexpectedFile);
 
@@ -592,7 +658,7 @@ test('Planets directory rejects every unexpected file and nested directory', asy
         await mkdir(unexpectedDirectory);
         await assert.rejects(
             createAssetPackageOutputs({ projectRoot }),
-            /Planet source entries must be the three direct registered PNG files/
+            /Planet source entries must be direct PNG files/
         );
     });
 });
@@ -796,7 +862,7 @@ test('publication replaces the exact historical transitional planet bundle with 
             path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'),
             'utf8'
         ));
-        assert.equal(manifest.manifestSchemaVersion, '1.2');
+        assert.equal(manifest.manifestSchemaVersion, '1.3');
         assert.equal(manifest.assets.length, 34);
         assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets').formatVersion, '1.1');
         assert.deepEqual(manifest.bundles.map((bundle: any) => bundle.bundleId).sort(), [
@@ -805,7 +871,10 @@ test('publication replaces the exact historical transitional planet bundle with 
             'ships',
             'turrets-platforms'
         ]);
-        assert.notDeepEqual(await readFile(path.join(projectRoot, 'public', 'assets', 'planets.bin')), oldPlanetBundle);
+        assert.deepEqual(await readFile(path.join(projectRoot, 'public', 'assets', 'planets.bin')), oldPlanetBundle);
+        const addressedPlanet = manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets');
+        assert.equal(addressedPlanet.bundleFile, `/assets/planets.${addressedPlanet.bundleSha256}.bin`);
+        assert.notEqual(addressedPlanet.bundleFile, '/assets/planets.bin');
     });
 });
 
@@ -816,15 +885,18 @@ test('publication accepts the exact interrupted SVG-only predecessor and adds re
         const manifestPath = path.join(assetsRoot, 'asset-manifest.json');
         const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
         manifest.manifestSchemaVersion = '1.1';
+        delete manifest.generationId;
+        delete manifest.activePlanetPlacements;
         manifest.assets = manifest.assets.filter((asset: any) => asset.contentType === 'SVG');
         manifest.bundles = manifest.bundles.filter((bundle: any) => bundle.bundleId !== 'planets');
+        for (const bundle of manifest.bundles) bundle.bundleFile = `/assets/${bundle.bundleId}.bin`;
         await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
         await rm(path.join(assetsRoot, 'planets.bin'));
 
         const result = await prepareAssets({ projectRoot });
         assert.equal(result.mode, 'package');
         const upgraded = JSON.parse(await readFile(manifestPath, 'utf8'));
-        assert.equal(upgraded.manifestSchemaVersion, '1.2');
+        assert.equal(upgraded.manifestSchemaVersion, '1.3');
         assert.equal(upgraded.assets.length, 34);
         assert.equal(upgraded.bundles.length, 4);
         assert.equal(upgraded.bundles.find((bundle: any) => bundle.bundleId === 'planets').formatVersion, '1.1');
@@ -922,7 +994,9 @@ test('incomplete private sources fail without public fallback or replacing prior
 test('clean-clone validation detects bundle hash mismatches and rejects extra manifest fields', async () => {
     await createProjectFixture(async (projectRoot) => {
         await prepareAssets({ projectRoot });
-        const bundlePath = path.join(projectRoot, 'public', 'assets', 'ships.bin');
+        const manifest = JSON.parse(await readFile(path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'), 'utf8'));
+        const shipsBundle = manifest.bundles.find((bundle: any) => bundle.bundleId === 'ships');
+        const bundlePath = path.join(projectRoot, 'public', shipsBundle.bundleFile.slice(1));
         const bytes = await readFile(bundlePath);
         bytes[bytes.length - 1] ^= 0xff;
         await writeFile(bundlePath, bytes);
@@ -950,7 +1024,7 @@ test('clean-clone validation detects bundle hash mismatches and rejects extra ma
         await rm(path.join(projectRoot, 'private'), { recursive: true });
         await assert.rejects(
             validateCommittedAssetOutputs({ projectRoot }),
-            /does not match its source SHA-256/
+            /generation ID/
         );
     });
 });
@@ -1075,11 +1149,11 @@ test('PNG aggregate limits cover full file sizes, decoded pixels, and inflated s
     );
 });
 
-test('generated manifest schema 1.2 permits SVG and PNG without redundant bundle membership arrays', () => {
+test('generated manifest schema 1.3 carries the generation ID and permits SVG and PNG', () => {
     const schema = getManifestSchema();
     assert.equal(schema.$schema, 'https://json-schema.org/draft/2020-12/schema');
-    assert.equal(schema.properties.manifestSchemaVersion.const, '1.2');
-    assert.deepEqual(schema.required, ['manifestSchemaVersion', 'assets', 'bundles']);
+    assert.equal(schema.properties.manifestSchemaVersion.const, '1.3');
+    assert.deepEqual(schema.required, ['manifestSchemaVersion', 'generationId', 'activePlanetPlacements', 'assets', 'bundles']);
     assert.deepEqual(schema.properties.assets.items.properties.contentType.enum, ['SVG', 'PNG']);
     assert.deepEqual(schema.properties.bundles.items.properties.formatVersion.enum, ['1.0', '1.1']);
     assert.equal('assetIds' in schema.properties.bundles.items.properties, false);

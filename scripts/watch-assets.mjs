@@ -6,6 +6,27 @@ const CONTROL_FILES = new Set([
     'private/.asset-package-lock',
     'private/.asset-package-transaction.jsonl'
 ]);
+const CONTRACT_INPUTS = new Set([
+    'scripts/asset-registry.json',
+    'scripts/planet-asset-approvals.json',
+    'src/assets/planet-runtime-references.json'
+]);
+const GENERATED_RUNTIME_OUTPUTS = new Set([
+    'src/generated/runtimeassetcontract.ts',
+    'src/generated/publicsvgmanifest.ts'
+]);
+
+function applyAssetCacheHeaders(server) {
+    server.middlewares.use((request, response, next) => {
+        const pathname = (request.url ?? '').split('?', 1)[0];
+        if (pathname === '/assets/asset-manifest.json') {
+            response.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+        } else if (/^\/assets\/[a-z0-9]+(?:-[a-z0-9]+)*\.[a-f0-9]{64}\.bin$/.test(pathname)) {
+            response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        next();
+    });
+}
 
 export function isRelevantAssetWatchPath(filePath, projectRoot = PROJECT_ROOT, platform = process.platform) {
     const pathApi = platform === 'win32' ? path.win32 : path;
@@ -29,7 +50,7 @@ export function isRelevantAssetWatchPath(filePath, projectRoot = PROJECT_ROOT, p
     return normalizedPath === 'private'
         || normalizedPath === 'private/assets'
         || normalizedPath.startsWith('private/assets/')
-        || normalizedPath === 'scripts/asset-registry.json';
+        || CONTRACT_INPUTS.has(normalizedPath);
 }
 
 export function createAssetWatcherPlugin({
@@ -54,6 +75,7 @@ export function createAssetWatcherPlugin({
     let watcherErrorHandled = false;
     let serverWatcher = null;
     let serverLogger = null;
+    let viteServer = null;
     let onAll = null;
     let onError = null;
 
@@ -83,26 +105,38 @@ export function createAssetWatcherPlugin({
         if (closed) {
             return;
         }
-        const operation = Promise.resolve().then(() => prepare({ projectRoot: resolvedProjectRoot }));
+        const operation = (async () => {
+            let finalPassSucceeded = false;
+            do {
+                dirty = false;
+                try {
+                    await prepare({ projectRoot: resolvedProjectRoot });
+                    finalPassSucceeded = true;
+                    serverLogger?.info('Asset watcher reconciliation completed.');
+                } catch (error) {
+                    finalPassSucceeded = false;
+                    serverLogger?.error(`Asset watcher reconciliation failed: ${error.message}`, { error });
+                    if (initial) throw error;
+                    if (!dirty) break;
+                }
+                if (recoveryPending) {
+                    recoveryPending = false;
+                    dirty = true;
+                }
+            } while (dirty && !closed);
+            if (finalPassSucceeded && !initial && !dirty && !closed) {
+                viteServer?.ws?.send({ type: 'full-reload' });
+            }
+        })();
         activePreparation = operation;
         try {
             await operation;
-            serverLogger?.info('Asset watcher reconciliation completed.');
-        } catch (error) {
-            serverLogger?.error(`Asset watcher reconciliation failed: ${error.message}`, { error });
-            if (initial) {
-                throw error;
-            }
         } finally {
             if (activePreparation === operation) {
                 activePreparation = null;
             }
             if (!closed) {
-                if (recoveryPending) {
-                    recoveryPending = false;
-                    dirty = false;
-                    void reconcile(false);
-                } else if (dirty && !degraded) {
+                if (dirty && !degraded) {
                     scheduleReconciliation();
                 }
             }
@@ -150,6 +184,7 @@ export function createAssetWatcherPlugin({
             await activePreparation.catch(() => {});
         }
         serverWatcher = null;
+        viteServer = null;
         serverLogger = null;
     }
 
@@ -157,6 +192,8 @@ export function createAssetWatcherPlugin({
         name: 'redemptis-asset-watcher',
         apply: 'serve',
         async configureServer(server) {
+            viteServer = server;
+            applyAssetCacheHeaders(server);
             serverWatcher = server.watcher;
             serverLogger = server.config.logger;
             onAll = onRelevantEvent;
@@ -175,6 +212,18 @@ export function createAssetWatcherPlugin({
             if (dirty && !degraded) {
                 scheduleReconciliation();
             }
+        },
+        handleHotUpdate(context) {
+            const relative = path.relative(resolvedProjectRoot, context.file)
+                .split(path.sep).join('/');
+            const normalized = process.platform === 'win32' ? relative.toLowerCase() : relative;
+            if (isRelevantAssetWatchPath(context.file, resolvedProjectRoot)
+                || GENERATED_RUNTIME_OUTPUTS.has(normalized)) {
+                return [];
+            }
+        },
+        configurePreviewServer(server) {
+            applyAssetCacheHeaders(server);
         },
         closeServer: dispose
     };

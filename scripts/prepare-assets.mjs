@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAssetPackageOutputs, validateCommittedAssetOutputs, validateRtabBundle } from './package-assets.mjs';
 import { createPublicSvgManifest, renderPublicSvgManifest } from './generate-public-svg-manifest.mjs';
+import { buildRuntimeContract, renderRuntimeContract } from './asset-contract.mjs';
 import { PROJECT_ROOT, readAssetRegistry } from './asset-registry.mjs';
 import {
     assertNoPendingAssetOutputTransaction,
@@ -253,6 +254,9 @@ function validateCurrentMixedManifest(manifest, registry) {
         asset.assetId,
         { ...asset, bundleId: historicalBundleId(asset.logicalPath) }
     ]));
+    for (const asset of HISTORICAL_PLANET_ASSETS) {
+        expectedAssets.set(asset.assetId, { ...asset, bundleId: 'planets' });
+    }
     const actualById = new Map();
     const paths = new Set();
     const keys = new Set();
@@ -351,6 +355,56 @@ async function validatePublishedOutputs(projectRoot, expectedRuntimeManifest) {
     }
 }
 
+async function validatePreviousGeneratedManifest(projectRoot, manifest) {
+    assertExactKeys(manifest, [
+        'manifestSchemaVersion', 'generationId', 'activePlanetPlacements', 'assets', 'bundles'
+    ], 'schema-1.3 root');
+    if (manifest.manifestSchemaVersion !== '1.3' || !/^[a-f0-9]{64}$/.test(manifest.generationId)
+        || !Array.isArray(manifest.assets) || !Array.isArray(manifest.bundles)
+        || !Array.isArray(manifest.activePlanetPlacements)) {
+        throw new Error('Previous asset manifest is not a valid generated schema-1.3 contract');
+    }
+    const approvals = new Map();
+    const ids = new Set();
+    for (const asset of manifest.assets) {
+        assertExactKeys(asset, [
+            'assetId', 'logicalPath', 'textureKey', 'aliases', 'contentType', 'sourceSha256', 'bundleId'
+        ], 'schema-1.3 asset record');
+        if (ids.has(asset.assetId) || !/^[a-f0-9]{64}$/.test(asset.sourceSha256)) {
+            throw new Error('Previous schema-1.3 manifest contains duplicate identities or an invalid source hash');
+        }
+        ids.add(asset.assetId);
+        if (asset.contentType === 'PNG') approvals.set(asset.logicalPath, asset.sourceSha256);
+    }
+    const generated = buildRuntimeContract(manifest, approvals, manifest.activePlanetPlacements);
+    if (generated.generationId !== manifest.generationId) {
+        throw new Error('Previous schema-1.3 manifest generation ID is invalid');
+    }
+    const contractPath = path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts');
+    const contractSource = await readFile(contractPath, 'utf8');
+    if (contractSource !== renderRuntimeContract(generated)) {
+        throw new Error('Previous schema-1.3 runtime contract does not match its manifest');
+    }
+    const seenBundles = new Set();
+    for (const bundle of manifest.bundles) {
+        assertExactKeys(bundle, ['bundleId', 'bundleFile', 'formatVersion', 'assetCount', 'bundleSha256'], 'schema-1.3 bundle record');
+        if (seenBundles.has(bundle.bundleId) || !/^[a-f0-9]{64}$/.test(bundle.bundleSha256)
+            || bundle.bundleFile !== `/assets/${bundle.bundleId}.${bundle.bundleSha256}.bin`) {
+            throw new Error(`Previous schema-1.3 bundle record is invalid: ${bundle.bundleId}`);
+        }
+        seenBundles.add(bundle.bundleId);
+        const bundlePath = path.resolve(projectRoot, 'public', `.${bundle.bundleFile}`);
+        const bytes = await readFile(bundlePath);
+        if (createHash('sha256').update(bytes).digest('hex') !== bundle.bundleSha256) {
+            throw new Error(`Previous content-addressed bundle hash is invalid: ${bundle.bundleFile}`);
+        }
+        const expectedAssets = manifest.assets.filter((asset) => asset.bundleId === bundle.bundleId)
+            .map(({ assetId, contentType, logicalPath, sourceSha256 }) => ({ assetId, contentType, logicalPath, sourceSha256 }))
+            .sort((left, right) => left.assetId.localeCompare(right.assetId));
+        await validateRtabBundle(bytes, bundle, expectedAssets);
+    }
+}
+
 async function findStaleBundlePaths(projectRoot, nextManifest) {
     const publicRoot = path.join(projectRoot, 'public');
     const registry = await readAssetRegistry(projectRoot);
@@ -408,6 +462,7 @@ async function findStaleBundlePaths(projectRoot, nextManifest) {
         && Array.isArray(oldManifest.assets) && oldManifest.assets.length !== 31;
     const isCurrentMixed = oldManifest?.manifestSchemaVersion === '1.2'
         && Array.isArray(oldManifest.assets) && oldManifest.assets.length === 34;
+    const isGenerated = oldManifest?.manifestSchemaVersion === '1.3';
     if (isHistorical) {
         validateHistoricalManifest(oldManifest, registry);
         if (!planetInfo) {
@@ -424,6 +479,8 @@ async function findStaleBundlePaths(projectRoot, nextManifest) {
         if (planetInfo.isSymbolicLink() || !planetInfo.isFile()) {
             throw new Error(`Current planet bundle is not a regular file: ${planetsBundlePath}`);
         }
+    } else if (isGenerated) {
+        await validatePreviousGeneratedManifest(projectRoot, oldManifest);
     } else {
         validateInterruptedSvgOnlyManifest(oldManifest, registry);
         if (planetInfo) {
@@ -470,7 +527,7 @@ async function findStaleBundlePaths(projectRoot, nextManifest) {
             throw new Error(`Historical transitional planet bundle fingerprint mismatch: ${destination}`);
         }
     }
-    if (nextManifest.assets.length !== 34 || nextManifest.bundles.length !== 4
+    if (nextManifest.assets.length < 32 || nextManifest.bundles.length < 4
         || nextManifest.bundles.some((bundle) => bundle.bundleId === 'planets' && bundle.formatVersion !== '1.1')) {
         throw new Error('New mixed-asset output set is incomplete or does not use RTAB 1.1 for planets.bin');
     }

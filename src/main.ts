@@ -2,13 +2,25 @@ import Phaser from 'phaser';
 import { Game } from './core/Game';
 import { MINIMAP_SHIP_ICON_ASSETS, MiniMap } from './ui/MiniMap';
 import { PlanetBackground } from './entities/background/Planet';
+import { runtimeAssetContract } from './generated/runtimeAssetContract';
 import { SpaceBackground } from './entities/background/SpaceBackground';
 import { AISTIARIA, YUTIARINALIA } from './managers/FactionManager';
 import type { FactionId } from './managers/FactionManager';
 import { Ship } from './entities/Ship';
 import { ShipBlueprint } from './managers/ShipBlueprint';
 import type { ShipBlueprintDefinition } from './managers/ShipBlueprint';
-import { publicSvgTextures } from './generated/publicSvgManifest';
+import {
+    constructGameAfterRuntimePreflight,
+    preflightRtabAssets,
+    registerPreparedTextures,
+    type PreparedRuntimeAssets
+} from './assets/rtabRuntimeLoader';
+
+function planetTextureForPlacement(slot: string): string {
+    const placement = runtimeAssetContract.activePlanetPlacements.find((entry) => entry.slot === slot);
+    if (!placement) throw new Error(`Generated runtime contract is missing planet placement "${slot}".`);
+    return placement.textureKey;
+}
 
 interface DebugShipBlueprint {
     id: string;
@@ -82,21 +94,14 @@ const DEBUG_SHIP_BLUEPRINTS: readonly DebugShipBlueprint[] = [
 
 // Scene to handle loading and generating dummy textures
 class BootScene extends Phaser.Scene {
-    constructor() {
+    constructor(
+        private readonly preparedAssets: PreparedRuntimeAssets,
+        private readonly reportStartupError: (error: unknown) => void
+    ) {
         super('BootScene');
     }
 
     preload() {
-        // Load actual planet textures from public folder
-        this.load.image('planetMap111', '/assets/Planets/Map-111.png');
-        this.load.image('planetMap122', '/assets/Planets/Map-122.png');
-        this.load.image('planetMap692', '/assets/Planets/Map-692.png');
-
-        // Public SVGs are generated from public/assets; source assets stay separate.
-        for (const asset of publicSvgTextures) {
-            this.load.svg(asset.key, asset.url, { scale: 0.5 });
-        }
-
         for (const asset of Object.values(MINIMAP_SHIP_ICON_ASSETS)) {
             this.load.svg(asset.key, asset.url, { scale: 0.5 });
         }
@@ -106,27 +111,12 @@ class BootScene extends Phaser.Scene {
     }
 
     create() {
-        for (const asset of publicSvgTextures) {
-            const texture = this.textures.get(asset.key);
-            const source = texture.source[0]?.image;
-
-            for (const alias of asset.aliases) {
-                if (!(source instanceof HTMLImageElement)) {
-                    throw new Error(`Cannot register SVG texture alias "${alias}" for "${asset.key}".`);
-                }
-
-                if (!this.textures.addImage(alias, source)) {
-                    throw new Error(`Failed to register SVG texture alias "${alias}" for "${asset.key}".`);
-                }
-            }
+        try {
+            registerPreparedTextures(this.textures, this.preparedAssets);
+            this.scene.start('GameScene');
+        } catch (error) {
+            this.reportStartupError(error);
         }
-
-        // Register custom planet shader pipeline
-        // In Phaser 4, we use the Shader Game Object directly, so custom pipelines
-        // are often unnecessary for simple shaders.
-        // We will remove the manual pipeline registration.
-
-        this.scene.start('GameScene');
     }
 
     createDummyTextures() {
@@ -207,10 +197,11 @@ class GameScene extends Phaser.Scene {
 
     constructor() {
         super('GameScene');
-        this.engine = new Game();
     }
 
     create() {
+        this.engine = new Game();
+
         // Misty space background: nebula gradient + twinkling stars (no grid).
         // Drawn behind everything with a slow parallax scroll.
         this.spaceBackground = new SpaceBackground(this, {
@@ -233,7 +224,7 @@ class GameScene extends Phaser.Scene {
             x: 400,
             y: 300,
             radius: 150,
-            texture: 'planetMap692',
+            texture: planetTextureForPlacement('existingPlanetPlacement1'),
             shader: 'PlanetShader',
             depth: -10,
             rotationSpeed: 0.05,
@@ -245,7 +236,7 @@ class GameScene extends Phaser.Scene {
             x: 100,
             y: 100,
             radius: 100,
-            texture: 'planetMap122',
+            texture: planetTextureForPlacement('existingPlanetPlacement2'),
             shader: 'PlanetShader',
             depth: -5,
             rotationSpeed: -0.03,
@@ -257,7 +248,7 @@ class GameScene extends Phaser.Scene {
             x: 700,
             y: 500,
             radius: 120,
-            texture: 'planetMap111',
+            texture: planetTextureForPlacement('existingPlanetPlacement3'),
             shader: 'PlanetShader',
             depth: -15,
             rotationSpeed: 0.07,
@@ -754,7 +745,7 @@ class GameScene extends Phaser.Scene {
     }
 }
 
-const config: Phaser.Types.Core.GameConfig = {
+const gameConfig: Omit<Phaser.Types.Core.GameConfig, 'scene'> = {
     type: Phaser.AUTO,
     width: '100%',
     height: '100%',
@@ -766,8 +757,49 @@ const config: Phaser.Types.Core.GameConfig = {
             debug: false,
             fixedStep: false
         }
-    },
-    scene: [BootScene, GameScene]
+    }
 };
 
-new Phaser.Game(config);
+function displayStartupError(error: unknown): void {
+    const previous = document.getElementById('rtab-startup-error');
+    previous?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'rtab-startup-error';
+    overlay.setAttribute('role', 'alert');
+    overlay.setAttribute('aria-live', 'assertive');
+    overlay.style.cssText = [
+        'position:fixed',
+        'inset:0',
+        'z-index:2147483647',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'padding:2rem',
+        'box-sizing:border-box',
+        'background:#090d18',
+        'color:#fff',
+        'font:16px/1.5 system-ui,sans-serif',
+        'text-align:center',
+        'white-space:pre-wrap'
+    ].join(';');
+    const detail = error instanceof Error ? error.message : String(error);
+    overlay.textContent = `Redemptis Tiariea could not start.\n${detail}`;
+    document.body.appendChild(overlay);
+}
+
+async function bootstrap(): Promise<void> {
+    await constructGameAfterRuntimePreflight(
+        preflightRtabAssets,
+        (preparedAssets) => {
+        const config: Phaser.Types.Core.GameConfig = {
+            ...gameConfig,
+            scene: [new BootScene(preparedAssets, displayStartupError), GameScene]
+        };
+            return new Phaser.Game(config);
+        },
+        displayStartupError
+    );
+}
+
+void bootstrap();

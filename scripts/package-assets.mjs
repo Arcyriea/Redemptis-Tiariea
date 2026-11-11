@@ -5,6 +5,7 @@ import saxes from 'saxes';
 import { fileURLToPath } from 'node:url';
 import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
+import { buildRuntimeContract, derivePlanetIdentity, readPlanetApprovals, readPlanetPlacements, renderRuntimeContract } from './asset-contract.mjs';
 
 const HEADER_SIZE = 64;
 const INDEX_HEADER_SIZE = 28;
@@ -16,11 +17,7 @@ const UINT32_MAX = 0xffffffffn;
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const CONTENT_TYPE_CODES = Object.freeze({ SVG: 0, PNG: 1 });
-const APPROVED_PNG_HASHES = Object.freeze({
-    'assets/Planets/Map-111.png': '83d39b7a7603f574f47cee57c4d9b12b0b468b469fece0ffe7765d921f067ea1',
-    'assets/Planets/Map-122.png': '35f8af626f4d7162a2926ef3dad6cdec36610cfd6f3acac86a1547d764081f7e',
-    'assets/Planets/Map-692.png': '43652c4465b35a1e3ae4bf99bbb75308359179c9d1b3fd8711d38c806b1472a8'
-});
+const FIXED_BUNDLE_PATH_PATTERN = /^\/assets\/([a-z0-9]+(?:-[a-z0-9]+)*)\.([a-f0-9]{64})\.bin$/;
 
 function sha256(bytes) {
     return createHash('sha256').update(bytes).digest();
@@ -200,9 +197,22 @@ function buildManifestSchema() {
         title: 'RTAB asset manifest',
         type: 'object',
         additionalProperties: false,
-        required: ['manifestSchemaVersion', 'assets', 'bundles'],
+        required: ['manifestSchemaVersion', 'generationId', 'activePlanetPlacements', 'assets', 'bundles'],
         properties: {
-            manifestSchemaVersion: { const: '1.2' },
+            manifestSchemaVersion: { const: '1.3' },
+            generationId: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+            activePlanetPlacements: {
+                type: 'array',
+                items: {
+                    type: 'object', additionalProperties: false,
+                    required: ['slot', 'order', 'textureKey'],
+                    properties: {
+                        slot: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*$' },
+                        order: { type: 'integer', minimum: 1 },
+                        textureKey: { type: 'string', pattern: '^planetMap[1-9][0-9]*$' }
+                    }
+                }
+            },
             assets: {
                 type: 'array',
                 items: {
@@ -228,7 +238,7 @@ function buildManifestSchema() {
                     required: ['bundleId', 'bundleFile', 'formatVersion', 'assetCount', 'bundleSha256'],
                     properties: {
                         bundleId: { type: 'string', minLength: 1 },
-                        bundleFile: { type: 'string', pattern: '^/assets/.+\\.bin$' },
+                        bundleFile: { type: 'string', pattern: '^/assets/[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-f0-9]{64}\\.bin$' },
                         formatVersion: { enum: ['1.0', '1.1'] },
                         assetCount: { type: 'integer', minimum: 1 },
                         bundleSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' }
@@ -306,12 +316,16 @@ async function discoverCategoryAssets(projectRoot, registry) {
     const normalizedCategories = new Map();
     const discoveredByPath = new Map();
     const categories = [];
+    const discoveredPlanets = [];
 
     for (const entry of rootEntries) {
         if (!entry.isDirectory()) {
             throw new Error(`Asset files must be inside a top-level category directory: ${path.join(assetsRoot, entry.name)}`);
         }
         const bundleId = normalizeCategoryName(entry.name);
+        if (bundleId === 'planets' && entry.name !== 'Planets') {
+            throw new Error(`Planet source directory must use exact casing "Planets": ${entry.name}`);
+        }
         const priorCategory = normalizedCategories.get(bundleId);
         if (priorCategory) {
             throw new Error(`Asset category names "${priorCategory}" and "${entry.name}" collide after normalization to "${bundleId}"`);
@@ -322,7 +336,7 @@ async function discoverCategoryAssets(projectRoot, registry) {
         async function walk(directory, relativeDirectory) {
             for (const child of await readSafeDirectory(directory)) {
                 if (entry.name === 'Planets' && child.isDirectory()) {
-                    throw new Error(`Planet source entries must be the three direct registered PNG files: ${path.join(directory, child.name)}`);
+                    throw new Error(`Planet source entries must be direct PNG files: ${path.join(directory, child.name)}`);
                 }
                 const childRelative = `${relativeDirectory}/${child.name}`;
                 const childPath = path.join(directory, child.name);
@@ -332,6 +346,12 @@ async function discoverCategoryAssets(projectRoot, registry) {
                 }
 
                 const logicalPath = `assets/${entry.name}${childRelative}`;
+                if (entry.name === 'Planets') {
+                    const derived = derivePlanetIdentity(child.name);
+                    discoveredPlanets.push(derived);
+                    category.assets.push(derived);
+                    continue;
+                }
                 const registered = registeredByPath.get(logicalPath);
                 if (!registered) {
                     const caseVariant = registeredByLowerPath.get(logicalPath.toLowerCase());
@@ -359,15 +379,45 @@ async function discoverCategoryAssets(projectRoot, registry) {
             throw new Error(`Fatal: could not find canonical source for asset ${asset.assetId}: ${asset.logicalPath}`);
         }
     }
-    return { assetsRoot, categories };
+    const approvals = await readPlanetApprovals(projectRoot);
+    const planetPaths = new Set(discoveredPlanets.map((asset) => asset.logicalPath));
+    for (const asset of discoveredPlanets) {
+        if (!approvals.has(asset.logicalPath)) {
+            throw new Error(`Planet source "${asset.logicalPath}" has no approved fingerprint; run the explicit planet approval command`);
+        }
+    }
+    for (const approvedPath of approvals.keys()) {
+        if (!planetPaths.has(approvedPath)) {
+            throw new Error(`Planet approval "${approvedPath}" is stale; prune it only with the explicit approval command`);
+        }
+    }
+    const placements = await readPlanetPlacements(projectRoot);
+    const textureKeys = new Set(discoveredPlanets.map((asset) => asset.textureKey));
+    for (const placement of placements) {
+        if (!textureKeys.has(placement.textureKey)) {
+            throw new Error(`Active planet placement "${placement.slot}" references missing texture "${placement.textureKey}"`);
+        }
+    }
+    const assets = [...registry.assets, ...discoveredPlanets];
+    const identitySets = [new Set(), new Set(), new Set()];
+    for (const asset of assets) {
+        const values = [asset.assetId, asset.logicalPath.toLowerCase(), asset.textureKey.toLowerCase()];
+        for (let index = 0; index < values.length; index += 1) {
+            if (identitySets[index].has(values[index])) {
+                throw new Error(`Derived asset inventory contains a duplicate identity: ${values[index]}`);
+            }
+            identitySets[index].add(values[index]);
+        }
+    }
+    return { assetsRoot, categories, assets, approvals, placements };
 }
 
-async function loadValidatedInputs(projectRoot, registry) {
+async function loadValidatedInputs(projectRoot, assets, approvals) {
     const validatedAssets = [];
     let aggregatePngFileBytes = 0;
     let aggregatePngDecodedBytes = 0;
     let aggregatePngScanlineBytes = 0;
-    for (const asset of registry.assets) {
+    for (const asset of assets) {
         if (!Object.hasOwn(CONTENT_TYPE_CODES, asset.contentType)) {
             throw new Error(`Fatal: unsupported content type ${asset.contentType} for asset ${asset.assetId}`);
         }
@@ -394,11 +444,14 @@ async function loadValidatedInputs(projectRoot, registry) {
         if (asset.contentType === 'SVG') {
             decodeSvg(bytes, asset);
         } else {
-            const approvedHash = APPROVED_PNG_HASHES[asset.logicalPath];
+            const approvedHash = approvals.get(asset.logicalPath);
             if (!approvedHash || sha256Hex(bytes) !== approvedHash) {
                 throw new Error(`Fatal: private PNG source does not match its approved fingerprint: ${asset.logicalPath}`);
             }
             const pngResult = await validatePng(bytes, asset);
+            if (pngResult.width !== 2000 || pngResult.height !== 1000) {
+                throw new Error(`Fatal: planet image ${asset.logicalPath} must be 2000x1000, got ${pngResult.width}x${pngResult.height}`);
+            }
             aggregatePngFileBytes += pngResult.fileBytes;
             aggregatePngDecodedBytes += pngResult.decodedPixelBytes;
             aggregatePngScanlineBytes += pngResult.scanlineBytes;
@@ -421,19 +474,20 @@ async function loadValidatedInputs(projectRoot, registry) {
 
 export async function createAssetPackageOutputs({ projectRoot = PROJECT_ROOT } = {}) {
     const registry = await readAssetRegistry(projectRoot);
-    const { categories } = await discoverCategoryAssets(projectRoot, registry);
-    const validatedAssets = await loadValidatedInputs(projectRoot, registry);
+    const { categories, assets, approvals, placements } = await discoverCategoryAssets(projectRoot, registry);
+    const validatedAssets = await loadValidatedInputs(projectRoot, assets, approvals);
     const outputFiles = new Map();
     const manifestAssets = [];
     const manifestBundles = [];
 
     for (const category of categories) {
         const bundleId = category.bundleId;
-        const bundleFile = `/assets/${bundleId}.bin`;
         const members = category.assets.map((asset) => (
             validatedAssets.find((validated) => validated.assetId === asset.assetId)
         ));
-        const bundleResult = createBundle(bundleId, bundleFile, members);
+        const bundleResult = createBundle(bundleId, '', members);
+        const bundleFile = `/assets/${bundleId}.${bundleResult.bundleSha256}.bin`;
+        bundleResult.bundleFile = bundleFile;
         outputFiles.set(safeBundlePath(projectRoot, bundleFile), bundleResult.bytes);
         manifestBundles.push({
             bundleId,
@@ -456,15 +510,19 @@ export async function createAssetPackageOutputs({ projectRoot = PROJECT_ROOT } =
     }
 
     const manifest = {
-        manifestSchemaVersion: '1.2',
+        manifestSchemaVersion: '1.3',
+        generationId: '0'.repeat(64),
+        activePlanetPlacements: placements,
         assets: manifestAssets.sort((left, right) => left.assetId.localeCompare(right.assetId)),
         bundles: manifestBundles.sort((left, right) => left.bundleId.localeCompare(right.bundleId))
     };
+    const runtimeContract = buildRuntimeContract(manifest, approvals, placements);
+    manifest.generationId = runtimeContract.generationId;
     const assetRoot = path.join(projectRoot, 'public', 'assets');
     outputFiles.set(path.join(assetRoot, 'asset-manifest.json'), stringifyJson(manifest));
     outputFiles.set(path.join(assetRoot, 'asset-manifest-schema.json'), stringifyJson(buildManifestSchema()));
 
-    validateManifest(manifest, registry);
+    validateManifest(manifest, assets, approvals, placements);
     for (const bundle of manifest.bundles) {
         const bundleBytes = outputFiles.get(safeBundlePath(projectRoot, bundle.bundleFile));
         if (!bundleBytes) {
@@ -485,7 +543,8 @@ export async function createAssetPackageOutputs({ projectRoot = PROJECT_ROOT } =
         await validateRtabBundle(bundleBytes, bundle, expectedAssets);
     }
 
-    return { registry, manifest, outputFiles };
+    outputFiles.set(path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts'), renderRuntimeContract(runtimeContract));
+    return { registry, manifest, outputFiles, runtimeContract };
 }
 
 function assertHexDigest(value, label) {
@@ -703,35 +762,37 @@ function assertOnlyKeys(value, expectedKeys, label) {
     }
 }
 
-function validateManifest(manifest, registry) {
-    if (!manifest || manifest.manifestSchemaVersion !== '1.2'
+function validateManifest(manifest, assets, approvals, placements) {
+    if (!manifest || manifest.manifestSchemaVersion !== '1.3'
         || !Array.isArray(manifest.assets) || !Array.isArray(manifest.bundles)) {
         throw new Error('RTAB asset manifest has an invalid shape or manifestSchemaVersion');
     }
-    assertOnlyKeys(manifest, ['manifestSchemaVersion', 'assets', 'bundles'], 'RTAB asset manifest');
+    assertOnlyKeys(manifest, ['manifestSchemaVersion', 'generationId', 'activePlanetPlacements', 'assets', 'bundles'], 'RTAB asset manifest');
+    assertHexDigest(manifest.generationId, 'contract generation ID');
+    if (JSON.stringify(manifest.activePlanetPlacements) !== JSON.stringify(placements)) {
+        throw new Error('RTAB manifest active planet placements do not match the validated reference source');
+    }
 
     const expectedBundleByAssetId = new Map();
     const expectedBundles = new Map();
-    for (const asset of registry.assets) {
+    for (const asset of assets) {
         const categoryName = asset.logicalPath.split('/')[1];
         const bundleId = normalizeCategoryName(categoryName);
-        const bundleFile = `/assets/${bundleId}.bin`;
         expectedBundleByAssetId.set(asset.assetId, bundleId);
         expectedBundles.set(bundleId, {
             bundleId,
-            bundleFile,
             assets: [...(expectedBundles.get(bundleId)?.assets ?? []), asset]
         });
     }
-    if (manifest.assets.length !== registry.assets.length) {
-        throw new Error('RTAB asset manifest does not contain exactly the registered assets');
+    if (manifest.assets.length !== assets.length) {
+        throw new Error('RTAB asset manifest does not contain the complete derived inventory');
     }
 
     const manifestAssetsById = new Map(manifest.assets.map((asset) => [asset.assetId, asset]));
     if (manifestAssetsById.size !== manifest.assets.length) {
         throw new Error('RTAB asset manifest contains duplicate asset IDs');
     }
-    for (const expected of registry.assets) {
+    for (const expected of assets) {
         const actual = manifestAssetsById.get(expected.assetId);
         assertOnlyKeys(
             actual,
@@ -747,7 +808,7 @@ function validateManifest(manifest, registry) {
         }
         assertHexDigest(actual.sourceSha256, `source for "${expected.assetId}"`);
         if (expected.contentType === 'PNG'
-            && actual.sourceSha256 !== APPROVED_PNG_HASHES[expected.logicalPath]) {
+            && actual.sourceSha256 !== approvals.get(expected.logicalPath)) {
             throw new Error(`RTAB manifest source SHA-256 for "${expected.assetId}" does not match its approved fingerprint`);
         }
     }
@@ -766,17 +827,31 @@ function validateManifest(manifest, registry) {
             ['bundleId', 'bundleFile', 'formatVersion', 'assetCount', 'bundleSha256'],
             `RTAB manifest bundle "${bundleId}"`
         );
-        if (!actual || actual.bundleFile !== expected.bundleFile
+        if (!actual || actual.bundleFile !== `/assets/${bundleId}.${actual.bundleSha256}.bin`
             || actual.formatVersion !== (expected.assets.some((asset) => asset.contentType === 'PNG') ? '1.1' : '1.0')
             || actual.assetCount !== expected.assets.length) {
             throw new Error(`RTAB manifest bundle metadata does not match derived category "${bundleId}"`);
         }
         assertHexDigest(actual.bundleSha256, `bundle "${bundleId}"`);
     }
+    const expectedGenerationId = buildRuntimeContract(manifest, approvals, placements).generationId;
+    if (manifest.generationId !== expectedGenerationId) {
+        throw new Error('RTAB manifest generation ID does not match its canonical contract inputs');
+    }
 }
 
 export async function validateCommittedAssetOutputs({ projectRoot = PROJECT_ROOT } = {}) {
     const registry = await readAssetRegistry(projectRoot);
+    const approvals = await readPlanetApprovals(projectRoot);
+    const placements = await readPlanetPlacements(projectRoot);
+    const planetAssets = [...approvals.keys()].map((logicalPath) => derivePlanetIdentity(path.posix.basename(logicalPath)));
+    const assets = [...registry.assets, ...planetAssets];
+    const planetTextureKeys = new Set(planetAssets.map((asset) => asset.textureKey));
+    for (const placement of placements) {
+        if (!planetTextureKeys.has(placement.textureKey)) {
+            throw new Error(`Active planet placement "${placement.slot}" references missing texture "${placement.textureKey}"`);
+        }
+    }
     const assetsRoot = path.join(projectRoot, 'public', 'assets');
     let manifest;
     let schema;
@@ -788,9 +863,16 @@ export async function validateCommittedAssetOutputs({ projectRoot = PROJECT_ROOT
     } catch (error) {
         throw new Error(`Could not read committed RTAB manifest/schema: ${error.message}`);
     }
-    validateManifest(manifest, registry);
+    validateManifest(manifest, assets, approvals, placements);
     if (JSON.stringify(schema) !== JSON.stringify(buildManifestSchema())) {
-        throw new Error('RTAB asset manifest schema does not match the 1.2 manifest schema');
+        throw new Error('RTAB asset manifest schema does not match the 1.3 manifest schema');
+    }
+
+    const runtimeContract = buildRuntimeContract(manifest, approvals, placements);
+    const runtimeContractPath = path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts');
+    const runtimeContractSource = await readCommittedOutput(runtimeContractPath, 'Generated runtime asset contract', 'utf8');
+    if (runtimeContractSource !== renderRuntimeContract(runtimeContract)) {
+        throw new Error('Generated runtime asset contract does not match the committed manifest and sources');
     }
 
     const validatedBundles = [];

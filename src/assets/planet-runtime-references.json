@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "placements": {
+    "existingPlanetPlacement1": { "order": 1, "textureKey": "planetMap692" },
+    "existingPlanetPlacement2": { "order": 2, "textureKey": "planetMap122" },
+    "existingPlanetPlacement3": { "order": 3, "textureKey": "planetMap111" }
+  }
+}

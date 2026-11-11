@@ -961,6 +961,15 @@ export async function publishAssetOutputs({
         await assertSafeDestination(projectRoot, absoluteDestination, true);
         const newBytes = toOutputBytes(contents);
         const prior = await fileState(absoluteDestination);
+        const relative = relativePath(projectRoot, absoluteDestination);
+        const addressed = /^public\/assets\/([a-z0-9]+(?:-[a-z0-9]+)*)\.([a-f0-9]{64})\.bin$/.exec(relative);
+        if (addressed) {
+            const expectedHash = addressed[2];
+            const newHash = hash(newBytes);
+            if (newHash !== expectedHash || (prior.exists && prior.sha256 !== expectedHash)) {
+                throw new Error(`Immutable content-addressed bundle does not match its path and cannot be replaced: ${absoluteDestination}`);
+            }
+        }
         const unchanged = prior.exists && prior.sha256 === hash(newBytes);
         const prefix = `${absoluteDestination}.rtab-${transactionId}`;
         outputEntries.push({

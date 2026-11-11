@@ -21,6 +21,10 @@ async function createFixture(run: (projectRoot: string) => Promise<void>) {
     await mkdir(path.join(projectRoot, 'public', 'assets', 'Planets'), { recursive: true });
     await mkdir(path.join(projectRoot, 'private', 'assets'), { recursive: true });
     await writeFile(path.join(projectRoot, 'scripts', 'asset-registry.json'), registry);
+    await writeFile(
+        path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json'))
+    );
     for (const filename of [...PLANET_FILES, ...DEFERRED_FILES]) {
         await writeFile(
             path.join(projectRoot, 'public', 'assets', 'Planets', filename),
@@ -97,13 +101,12 @@ test('mismatched existing destination stops without overwriting it', async () =>
     });
 });
 
-test('registry identity mismatch aborts before changing public sources or existing private destinations', async () => {
+test('planet approval mismatch aborts before changing public sources or existing private destinations', async () => {
     await createFixture(async (projectRoot) => {
-        const registryPath = path.join(projectRoot, 'scripts', 'asset-registry.json');
-        const registry = JSON.parse(await readFile(registryPath, 'utf8'));
-        const mismatched = registry.assets.find((asset: any) => asset.assetId === 'rt.planet-map.map-122');
-        mismatched.textureKey = 'wrongPlanetKey';
-        await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+        const approvalsPath = path.join(projectRoot, 'scripts', 'planet-asset-approvals.json');
+        const approvals = JSON.parse(await readFile(approvalsPath, 'utf8'));
+        approvals.approvals['assets/Planets/Map-111.png'] = '0'.repeat(64);
+        await writeFile(approvalsPath, `${JSON.stringify(approvals, null, 2)}\n`);
 
         const privateDirectory = path.join(projectRoot, 'private', 'assets', 'Planets');
         await mkdir(privateDirectory, { recursive: true });
@@ -119,7 +122,7 @@ test('registry identity mismatch aborts before changing public sources or existi
 
         await assert.rejects(
             migratePlanetAssetsPrivate({ projectRoot, apply: true }),
-            /registry identity does not match the approved planet asset/
+            /does not match its approved fingerprint/
         );
 
         assert.deepEqual(await readFile(existingDestination), userOwnedBytes);

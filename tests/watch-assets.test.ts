@@ -15,9 +15,13 @@ class FakeWatcher extends EventEmitter {}
 function createFakeServer() {
     const watcher = new FakeWatcher();
     const messages: string[] = [];
+    const reloads: object[] = [];
     return {
         watcher,
         messages,
+        reloads,
+        ws: { send: (message: object) => reloads.push(message) },
+        middlewares: { use: () => {} },
         config: {
             logger: {
                 info: (message: string) => messages.push(message),
@@ -59,6 +63,8 @@ test('asset watcher path filtering covers private lifecycle and registry on Wind
         isRelevantAssetWatchPath('SCRIPTS\\ASSET-REGISTRY.JSON', root, 'win32'),
         true
     );
+    assert.equal(isRelevantAssetWatchPath('scripts\\planet-asset-approvals.json', root, 'win32'), true);
+    assert.equal(isRelevantAssetWatchPath('src\\assets\\planet-runtime-references.json', root, 'win32'), true);
     assert.equal(
         isRelevantAssetWatchPath('private\\.asset-package-lock', root, 'win32'),
         false
@@ -91,6 +97,7 @@ test('asset watcher debounces relevant events and ignores transaction-control fi
     await delay(90);
 
     assert.equal(calls, 2);
+    assert.equal(server.reloads.length, 1);
     await plugin.closeServer();
 });
 
@@ -126,11 +133,13 @@ test('asset watcher serializes preparations and coalesces events during an activ
     server.watcher.emit('all', 'unlink', path.join(REPOSITORY_ROOT, 'private', 'assets', 'Ships', 'b.svg'));
     await delay(70);
     assert.equal(calls, 2);
+    assert.equal(server.reloads.length, 0);
 
     secondPass.resolve();
     await waitFor(() => calls === 3);
     await delay(60);
     assert.equal(calls, 3);
+    assert.equal(server.reloads.length, 1);
     assert.equal(maximumActive, 1);
     await plugin.closeServer();
 });
@@ -181,6 +190,7 @@ test('asset watcher logs failed reconciliations without retrying unchanged inval
     await delay(70);
     assert.equal(calls, 2);
     assert.ok(server.messages.some((message) => message.includes('invalid registered source')));
+    assert.equal(server.reloads.length, 0);
 
     server.watcher.emit('error', new Error('watch backend failed'));
     await waitFor(() => calls === 3);
@@ -189,6 +199,14 @@ test('asset watcher logs failed reconciliations without retrying unchanged inval
     assert.equal(calls, 3);
     assert.ok(server.messages.some((message) => message.includes('monitoring is degraded')));
     await plugin.closeServer();
+});
+
+test('asset watcher suppresses HMR for editable contract inputs and generated runtime outputs', async () => {
+    const plugin = createAssetWatcherPlugin({ projectRoot: REPOSITORY_ROOT, prepare: async () => {} });
+    const stale = plugin.handleHotUpdate({ file: path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json') });
+    const generated = plugin.handleHotUpdate({ file: path.join(REPOSITORY_ROOT, 'src', 'generated', 'runtimeAssetContract.ts') });
+    assert.deepEqual(stale, []);
+    assert.deepEqual(generated, []);
 });
 
 test('asset watcher disposal cancels pending reconciliation', async () => {

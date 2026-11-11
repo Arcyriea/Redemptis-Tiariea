@@ -217,27 +217,6 @@
       "textureKey": "public-turrets-platforms-yutiarin-perimeter-turret",
       "aliases": [],
       "contentType": "SVG"
-    },
-    {
-      "assetId": "rt.planet-map.map-111",
-      "logicalPath": "assets/Planets/Map-111.png",
-      "textureKey": "planetMap111",
-      "aliases": [],
-      "contentType": "PNG"
-    },
-    {
-      "assetId": "rt.planet-map.map-122",
-      "logicalPath": "assets/Planets/Map-122.png",
-      "textureKey": "planetMap122",
-      "aliases": [],
-      "contentType": "PNG"
-    },
-    {
-      "assetId": "rt.planet-map.map-692",
-      "logicalPath": "assets/Planets/Map-692.png",
-      "textureKey": "planetMap692",
-      "aliases": [],
-      "contentType": "PNG"
     }
   ]
 }

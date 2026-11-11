@@ -52,7 +52,8 @@ async function writePlanetReplacementRecoveryJournal(
     const assetsRoot = path.join(projectRoot, 'public', 'assets');
     const manifest = JSON.parse(await readFile(path.join(assetsRoot, 'asset-manifest.json'), 'utf8'));
     const transactionId = randomUUID();
-    const planetPath = path.join(assetsRoot, 'planets.bin');
+    const planetBundle = manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets');
+    const planetPath = path.join(projectRoot, 'public', planetBundle.bundleFile.slice(1));
     const currentPlanet = await readFile(planetPath);
     const priorPlanet = committed ? Buffer.from('previous transaction-owned planet bundle') : currentPlanet;
     const nextPlanet = committed ? currentPlanet : Buffer.from(currentPlanet);
@@ -65,6 +66,7 @@ async function writePlanetReplacementRecoveryJournal(
         path.join(assetsRoot, 'asset-manifest.json'),
         path.join(assetsRoot, 'asset-manifest-schema.json'),
         path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts')
+        ,path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts')
     ]) {
         if (destination === planetPath) {
             const temporary = `${destination}.rtab-${transactionId}.tmp`;
@@ -123,9 +125,27 @@ async function createFixture(run: (projectRoot: string) => Promise<void>) {
     const registry = JSON.parse(await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'asset-registry.json'), 'utf8'));
     await mkdir(path.join(projectRoot, 'scripts'), { recursive: true });
     await mkdir(path.join(projectRoot, 'src', 'generated'), { recursive: true });
+    await mkdir(path.join(projectRoot, 'src', 'assets'), { recursive: true });
     await mkdir(path.join(projectRoot, 'private', 'assets'), { recursive: true });
     await mkdir(path.join(projectRoot, 'public', 'assets'), { recursive: true });
     await writeFile(path.join(projectRoot, 'scripts', 'asset-registry.json'), `${JSON.stringify(registry, null, 2)}\n`);
+    await writeFile(
+        path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json'))
+    );
+    await writeFile(
+        path.join(projectRoot, 'src', 'assets', 'planet-runtime-references.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'src', 'assets', 'planet-runtime-references.json'))
+    );
+    await writeFile(
+        path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json'))
+    );
+    await mkdir(path.join(projectRoot, 'src', 'assets'), { recursive: true });
+    await writeFile(
+        path.join(projectRoot, 'src', 'assets', 'planet-runtime-references.json'),
+        await readFile(path.join(REPOSITORY_ROOT, 'src', 'assets', 'planet-runtime-references.json'))
+    );
 
     for (const asset of registry.assets) {
         const logicalPath = asset.logicalPath.slice('assets/'.length).split('/').join(path.sep);
@@ -133,6 +153,22 @@ async function createFixture(run: (projectRoot: string) => Promise<void>) {
         await mkdir(path.dirname(privatePath), { recursive: true });
         const bytes = await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', logicalPath));
         await writeFile(privatePath, bytes);
+    }
+    const planetSourceRoot = path.join(projectRoot, 'private', 'assets', 'Planets');
+    await mkdir(planetSourceRoot, { recursive: true });
+    for (const fileName of ['Map-111.png', 'Map-122.png', 'Map-692.png']) {
+        await writeFile(
+            path.join(planetSourceRoot, fileName),
+            await readFile(path.join(REPOSITORY_ROOT, 'private', 'assets', 'Planets', fileName))
+        );
+    }
+    const privatePlanets = path.join(projectRoot, 'private', 'assets', 'Planets');
+    await mkdir(privatePlanets, { recursive: true });
+    for (const filename of ['Map-111.png', 'Map-122.png', 'Map-692.png']) {
+        await writeFile(
+            path.join(privatePlanets, filename),
+            await readFile(path.join(REPOSITORY_ROOT, 'private', 'assets', 'Planets', filename))
+        );
     }
 
     try {
@@ -418,6 +454,7 @@ test('a committed output set is verified before stale-output retirement and back
             path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'),
             path.join(projectRoot, 'public', 'assets', 'asset-manifest-schema.json'),
             path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts')
+            ,path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts')
         ];
         const outputs = [];
         for (const destination of outputPaths) {
@@ -756,6 +793,7 @@ test('post-publication validation failure restores known-good outputs and preser
             path.join(assetsDirectory, 'asset-manifest.json'),
             path.join(assetsDirectory, 'asset-manifest-schema.json'),
             path.join(projectRoot, 'src', 'generated', 'publicSvgManifest.ts')
+            ,path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts')
         ];
         const priorOutputs = new Map<string, Buffer>();
         for (const destination of outputPaths) {
@@ -770,10 +808,10 @@ test('post-publication validation failure restores known-good outputs and preser
         for (const [destination, bytes] of priorOutputs) {
             outputs.set(destination, Buffer.from(bytes));
         }
-        const shipsPath = path.join(assetsDirectory, 'ships.bin');
-        const changedShips = Buffer.from(outputs.get(shipsPath)!);
-        changedShips[changedShips.length - 1] ^= 0xff;
-        outputs.set(shipsPath, changedShips);
+        const runtimeContractPath = path.join(projectRoot, 'src', 'generated', 'runtimeAssetContract.ts');
+        const changedContract = Buffer.from(outputs.get(runtimeContractPath)!);
+        changedContract[changedContract.length - 1] ^= 0xff;
+        outputs.set(runtimeContractPath, changedContract);
 
         await assert.rejects(
             publishAssetOutputs({
@@ -781,7 +819,7 @@ test('post-publication validation failure restores known-good outputs and preser
                 outputs,
                 stalePaths: [stalePath],
                 validatePublishedOutputs: async () => {
-                    assert.deepEqual(await readFile(shipsPath), changedShips);
+                    assert.deepEqual(await readFile(runtimeContractPath), changedContract);
                     throw new Error('injected post-publication disk validation failure');
                 }
             }),
@@ -794,16 +832,16 @@ test('post-publication validation failure restores known-good outputs and preser
         assert.deepEqual(await readFile(stalePath), staleBytes);
         const journalPath = path.join(projectRoot, 'private', '.asset-package-transaction.jsonl');
         assert.equal((await readFile(journalPath, 'utf8')).includes('"type":"begin"'), true);
-        const backupName = (await readdir(assetsDirectory)).find((name) => name.startsWith('ships.bin.rtab-') && name.endsWith('.bak'));
-        assert.ok(backupName, 'expected preserved bundle backup');
-        assert.deepEqual(await readFile(path.join(assetsDirectory, backupName)), priorOutputs.get(shipsPath));
+        const backupName = (await readdir(path.dirname(runtimeContractPath))).find((name) => name.startsWith(path.basename(runtimeContractPath) + '.rtab-') && name.endsWith('.bak'));
+        assert.ok(backupName, 'expected preserved runtime contract backup');
+        assert.deepEqual(await readFile(path.join(path.dirname(runtimeContractPath), backupName)), priorOutputs.get(runtimeContractPath));
 
         await withAssetOutputLock(projectRoot, async () => {});
         for (const [destination, bytes] of priorOutputs) {
             assert.deepEqual(await readFile(destination), bytes, `Recovery changed known-good output: ${destination}`);
         }
         await assert.rejects(lstat(journalPath), { code: 'ENOENT' });
-        await assert.rejects(lstat(path.join(assetsDirectory, backupName)), { code: 'ENOENT' });
+        await assert.rejects(lstat(path.join(path.dirname(runtimeContractPath), backupName)), { code: 'ENOENT' });
         assert.deepEqual(await readFile(stalePath), staleBytes);
     });
 });
@@ -827,6 +865,43 @@ test('publisher requires a validation callback before touching outputs or journa
         await assert.rejects(
             lstat(path.join(projectRoot, 'private', '.asset-package-transaction.jsonl')),
             { code: 'ENOENT' }
+        );
+    });
+});
+
+test('content-addressed bundle destinations are immutable and matching existing bytes are unchanged', async () => {
+    await createFixture(async (projectRoot) => {
+        await prepareAssets({ projectRoot });
+        const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        const bundle = manifest.bundles.find((entry: any) => entry.bundleId === 'components');
+        const destination = path.join(projectRoot, 'public', bundle.bundleFile.slice(1));
+        const bytes = await readFile(destination);
+        const outputs = new Map([
+            [destination, bytes],
+            [manifestPath, await readFile(manifestPath)]
+        ]);
+        await publishAssetOutputs({
+            projectRoot,
+            outputs,
+            validatePublishedOutputs: async () => {}
+        });
+        const repeat = await publishAssetOutputs({
+            projectRoot,
+            outputs,
+            validatePublishedOutputs: async () => {}
+        });
+        assert.equal(repeat.outputFiles, 2);
+        assert.deepEqual(await readFile(destination), bytes);
+
+        await writeFile(destination, Buffer.from('corrupt immutable bytes'));
+        await assert.rejects(
+            publishAssetOutputs({
+                projectRoot,
+                outputs,
+                validatePublishedOutputs: async () => {}
+            }),
+            /Immutable content-addressed bundle does not match its path and cannot be replaced/
         );
     });
 });
