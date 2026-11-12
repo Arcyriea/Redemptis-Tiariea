@@ -7,7 +7,7 @@ import { createAssetPackageOutputs, validateCommittedAssetOutputs, validateRtabB
 import { createPublicSvgManifest, renderPublicSvgManifest } from './generate-public-svg-manifest.mjs';
 import { buildRuntimeContract } from './asset-contract.mjs';
 import { parseBundleUrl } from '../src/assets/rtabContractShared.mjs';
-import { PROJECT_ROOT, readAssetRegistry } from './asset-registry.mjs';
+import { PROJECT_ROOT, inspectPrivateAssetsRoot, readAssetRegistry } from './asset-registry.mjs';
 import {
     assertNoPendingAssetOutputTransaction,
     publishAssetOutputs,
@@ -321,34 +321,7 @@ function validateCurrentMixedManifest(manifest, registry) {
 }
 
 async function privateAssetsRootExists(projectRoot) {
-    const privateRoot = path.join(projectRoot, 'private');
-    let privateInfo;
-    try {
-        privateInfo = await lstat(privateRoot);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            return false;
-        }
-        throw error;
-    }
-    if (privateInfo.isSymbolicLink() || !privateInfo.isDirectory()) {
-        throw new Error(`Private source root exists but is not a real directory: ${privateRoot}`);
-    }
-
-    const assetsRoot = path.join(privateRoot, 'assets');
-    let assetsInfo;
-    try {
-        assetsInfo = await lstat(assetsRoot);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            throw new Error(`Private source root exists but is missing the required assets directory: ${assetsRoot}`);
-        }
-        throw error;
-    }
-    if (assetsInfo.isSymbolicLink() || !assetsInfo.isDirectory()) {
-        throw new Error(`Private asset source root exists but is not a real directory: ${assetsRoot}`);
-    }
-    return true;
+    return (await inspectPrivateAssetsRoot(projectRoot)) !== null;
 }
 
 async function validatePublishedOutputs(projectRoot, expectedRuntimeManifest) {

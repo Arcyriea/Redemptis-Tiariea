@@ -3,7 +3,7 @@ import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import saxes from 'saxes';
 import { fileURLToPath } from 'node:url';
-import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
+import { inspectPrivateAssetsRoot, readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
 import { buildRuntimeContract, derivePlanetIdentity, PLANET_TEXTURE_KEY_PATTERN, readPlanetApprovals, readPlanetPlacements, renderRuntimeContract } from './asset-contract.mjs';
 import { parseBundleUrl } from '../src/assets/rtabContractShared.mjs';
@@ -304,12 +304,9 @@ async function readSafeDirectory(directory) {
 }
 
 async function discoverCategoryAssets(projectRoot, registry) {
-    const privateRoot = path.join(projectRoot, 'private');
-    const assetsRoot = path.join(projectRoot, 'private', 'assets');
-    const privateInfo = await lstat(privateRoot);
-    if (privateInfo.isSymbolicLink() || !privateInfo.isDirectory()) {
-        throw new Error(`Private source root is not a real directory: ${privateRoot}`);
-    }
+    const privateRoots = await inspectPrivateAssetsRoot(projectRoot);
+    if (!privateRoots) throw new Error(`Private source root is missing: ${path.join(projectRoot, 'private')}`);
+    const assetsRoot = privateRoots.assetsRoot;
     const rootEntries = await readSafeDirectory(assetsRoot);
     const registeredByPath = new Map(registry.assets.map((asset) => [asset.logicalPath, asset]));
     const registeredByLowerPath = new Map(registry.assets.map((asset) => [asset.logicalPath.toLowerCase(), asset.logicalPath]));

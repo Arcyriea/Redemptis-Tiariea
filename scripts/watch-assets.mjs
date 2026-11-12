@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { lstat, readFile } from 'node:fs/promises';
+import { watch as watchFilesystem } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { prepareAssets } from './prepare-assets.mjs';
-import { PROJECT_ROOT } from './asset-registry.mjs';
-import { readAssetRegistry, resolveAssetSource } from './asset-registry.mjs';
+import { inspectPrivateAssetsRoot, PROJECT_ROOT, readAssetRegistry, resolveAssetSource, resolvePrivateSourceRoot } from './asset-registry.mjs';
 import { readPlanetApprovals } from './asset-contract.mjs';
 import { validateCommittedAssetOutputs } from './package-assets.mjs';
 import { consumeDevPrepareMarker } from './dev-prepare-marker.mjs';
@@ -34,16 +34,24 @@ function applyAssetCacheHeaders(server) {
     });
 }
 
-export function isRelevantAssetWatchPath(filePath, projectRoot = PROJECT_ROOT, platform = process.platform) {
+export function isRelevantAssetWatchPath(filePath, projectRoot = PROJECT_ROOT, platform = process.platform, privateTargetRoot = null) {
     const pathApi = platform === 'win32' ? path.win32 : path;
     const root = pathApi.resolve(projectRoot);
     const absolutePath = pathApi.isAbsolute(filePath)
         ? pathApi.resolve(filePath)
         : pathApi.resolve(root, filePath);
-    const relativePath = pathApi.relative(root, absolutePath)
+    let relativePath = pathApi.relative(root, absolutePath)
         .split(pathApi.sep)
         .join('/')
         .replace(/\/+$/, '');
+    if (!relativePath || relativePath === '..' || relativePath.startsWith('../') || pathApi.isAbsolute(relativePath)) {
+        if (!privateTargetRoot) return false;
+        const realPrivateRoot = pathApi.resolve(privateTargetRoot);
+        const targetRelativePath = pathApi.relative(realPrivateRoot, absolutePath);
+        if (!targetRelativePath || targetRelativePath === '..' || targetRelativePath.startsWith(`..${pathApi.sep}`)
+            || pathApi.isAbsolute(targetRelativePath)) return false;
+        relativePath = pathApi.join('private', targetRelativePath).split(pathApi.sep).join('/').replace(/\/+$/, '');
+    }
     const normalizedPath = platform === 'win32' ? relativePath.toLowerCase() : relativePath;
 
     if (!normalizedPath || normalizedPath === '..' || normalizedPath.startsWith('../')) {
@@ -85,6 +93,8 @@ export function createAssetWatcherPlugin({
     let viteServer = null;
     let onAll = null;
     let onError = null;
+    let privateSourceWatcher = null;
+    let privateTargetRoot = null;
 
     async function consumePreparedStartup() {
         const markedGeneration = await consumeDevPrepareMarker(resolvedProjectRoot);
@@ -92,12 +102,8 @@ export function createAssetWatcherPlugin({
         const { manifest } = await validateCommittedAssetOutputs({ projectRoot: resolvedProjectRoot });
         if (manifest.generationId !== markedGeneration) return false;
 
-        const privateRoot = path.join(resolvedProjectRoot, 'private');
-        const privateInfo = await lstat(privateRoot).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
-        if (!privateInfo) return true;
-        const assetsInfo = await lstat(path.join(privateRoot, 'assets')).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
-        if (privateInfo.isSymbolicLink() || !privateInfo.isDirectory()
-            || !assetsInfo || assetsInfo.isSymbolicLink() || !assetsInfo.isDirectory()) return false;
+        const privateRoots = await inspectPrivateAssetsRoot(resolvedProjectRoot);
+        if (!privateRoots) return true;
         const registry = await readAssetRegistry(resolvedProjectRoot);
         const approvals = await readPlanetApprovals(resolvedProjectRoot);
         const assets = [
@@ -113,6 +119,30 @@ export function createAssetWatcherPlugin({
             if (!source || createHash('sha256').update(source).digest('hex') !== current.sourceSha256) return false;
         }
         return true;
+    }
+
+    async function refreshPrivateSourceWatcher() {
+        const privateRoots = await resolvePrivateSourceRoot(resolvedProjectRoot);
+        const nextTargetRoot = privateRoots?.privateRootIsSymlink ? privateRoots.realPrivateRoot : null;
+        if (nextTargetRoot === privateTargetRoot && (nextTargetRoot === null || privateSourceWatcher)) return;
+
+        privateSourceWatcher?.close();
+        privateSourceWatcher = null;
+        privateTargetRoot = nextTargetRoot;
+        if (!nextTargetRoot) return;
+
+        try {
+            privateSourceWatcher = watchFilesystem(nextTargetRoot, { recursive: true }, (_eventName, fileName) => {
+                const changedPath = fileName === null
+                    ? path.join(nextTargetRoot, 'assets')
+                    : path.resolve(nextTargetRoot, fileName.toString());
+                onRelevantEvent('change', changedPath);
+            });
+            privateSourceWatcher.on('error', onWatcherError);
+        } catch (error) {
+            privateTargetRoot = null;
+            throw new Error('Could not watch linked private source root "' + nextTargetRoot + '": ' + error.message);
+        }
     }
 
     function clearTimer() {
@@ -146,6 +176,7 @@ export function createAssetWatcherPlugin({
             do {
                 dirty = false;
                 try {
+                    await refreshPrivateSourceWatcher();
                     await prepare({ projectRoot: resolvedProjectRoot });
                     finalPassSucceeded = true;
                     serverLogger?.info('Asset watcher reconciliation completed.');
@@ -180,7 +211,7 @@ export function createAssetWatcherPlugin({
     }
 
     function onRelevantEvent(_eventName, eventPath) {
-        if (closed || degraded || !isRelevantAssetWatchPath(eventPath, resolvedProjectRoot)) {
+        if (closed || degraded || !isRelevantAssetWatchPath(eventPath, resolvedProjectRoot, process.platform, privateTargetRoot)) {
             return;
         }
         dirty = true;
@@ -216,6 +247,8 @@ export function createAssetWatcherPlugin({
         clearTimer();
         serverWatcher?.off('all', onAll);
         serverWatcher?.off('error', onError);
+        privateSourceWatcher?.close();
+        privateSourceWatcher = null;
         if (activePreparation) {
             await activePreparation.catch(() => {});
         }
@@ -239,6 +272,7 @@ export function createAssetWatcherPlugin({
             dirty = false;
 
             try {
+                await refreshPrivateSourceWatcher();
                 const prepared = canConsumeDevPrepareMarker && await consumePreparedStartup();
                 if (prepared) serverLogger?.info('Using the successful npm predev reconciliation; skipped duplicate publication.');
                 else await reconcile(true);

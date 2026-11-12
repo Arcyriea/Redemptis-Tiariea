@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROJECT_ROOT, readAssetRegistry, resolveAssetSource } from './asset-registry.mjs';
+import { inspectPrivateAssetsRoot, PROJECT_ROOT, readAssetRegistry, resolveAssetSource } from './asset-registry.mjs';
 import { readPlanetApprovals } from './asset-contract.mjs';
 import { validateCommittedAssetOutputs } from './package-assets.mjs';
 
@@ -91,6 +91,8 @@ export async function removeVerifiedPublicDuplicates({
     apply = false
 } = {}) {
     if (!CATEGORIES.has(category)) throw new Error(`Specify one category: ${[...CATEGORIES.keys()].join(', ')}.`);
+    const privateRoots = await inspectPrivateAssetsRoot(projectRoot);
+    if (!privateRoots) throw new Error(`Private source root is missing: ${path.join(projectRoot, 'private')}`);
     const { manifest, validatedBundles } = await validateCommittedAssetOutputs({ projectRoot });
     const registry = await readAssetRegistry(projectRoot);
     const registryByPath = new Map(registry.assets.map((asset) => [asset.logicalPath, asset]));

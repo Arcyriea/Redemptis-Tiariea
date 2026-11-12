@@ -3,12 +3,15 @@ import { lstat, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { derivePlanetIdentity } from './asset-contract.mjs';
+import { inspectPrivateAssetsRoot } from './asset-registry.mjs';
 import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export async function inspectPlanetApprovals(projectRoot = PROJECT_ROOT) {
-    const planetsDir = path.join(projectRoot, 'private', 'assets', 'Planets');
+    const privateRoots = await inspectPrivateAssetsRoot(projectRoot);
+    if (!privateRoots) throw new Error(`Private planet source root is missing: ${path.join(projectRoot, 'private')}`);
+    const planetsDir = path.join(privateRoots.assetsRoot, 'Planets');
     const approvalPath = path.join(projectRoot, 'scripts', 'planet-asset-approvals.json');
     const current = JSON.parse(await readFile(approvalPath, 'utf8'));
     const currentMap = new Map(Object.entries(current.approvals ?? {}));

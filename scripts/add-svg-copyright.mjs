@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import saxes from 'saxes';
-import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
+import { inspectPrivateAssetsRoot, readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 
 const PROJECT_NAME = 'Redemptis-Tiariea';
 const HEAD_DIRECTOR = 'Arcyriea (Head Director)';
@@ -157,6 +157,9 @@ export function insertMetadata(content, metadataBlock) {
 
 /** Build an allowlisted inventory of registered SVGs owned by private/assets. */
 export async function buildCanonicalInventory(projectRoot = PROJECT_ROOT) {
+    if (!await inspectPrivateAssetsRoot(projectRoot)) {
+        throw new Error(`Private asset source root is missing: ${path.join(projectRoot, 'private', 'assets')}`);
+    }
     const registry = await readAssetRegistry(projectRoot);
     const assets = registry.assets.filter((asset) => asset.contentType === 'SVG');
     if (assets.length !== 31) {

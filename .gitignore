@@ -35,3 +35,4 @@ dist-ssr
 
 # Private, uncompiled source assets
 /private/
+/private

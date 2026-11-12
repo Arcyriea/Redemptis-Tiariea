@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveAssetSourcePath } from './asset-roots.mjs';
@@ -138,6 +138,79 @@ export function resolveAssetSource(logicalPath, projectRoot = PROJECT_ROOT) {
     const sourcePath = resolveAssetSourcePath(logicalPath, projectRoot);
     if (!sourcePath) throw new Error(`Logical asset path escapes its canonical source root: "${logicalPath}"`);
     return sourcePath;
+}
+
+/** Resolve a real private directory or one top-level symlink/junction target. */
+export async function resolvePrivateSourceRoot(projectRoot = PROJECT_ROOT) {
+    const privateRoot = path.resolve(projectRoot, 'private');
+    let privateInfo;
+    try {
+        privateInfo = await lstat(privateRoot);
+    } catch (error) {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+    }
+
+    let realPrivateRoot;
+    let privateTargetInfo;
+    try {
+        realPrivateRoot = await realpath(privateRoot);
+        privateTargetInfo = await stat(realPrivateRoot);
+    } catch (error) {
+        throw new Error(`Private source root cannot be resolved: ${privateRoot}: ${error.message}`);
+    }
+    if (!privateTargetInfo.isDirectory()) {
+        throw new Error(`Private source root target is not a directory: ${privateRoot}`);
+    }
+
+    return {
+        privateRoot,
+        realPrivateRoot,
+        privateRootIsSymlink: privateInfo.isSymbolicLink()
+    };
+}
+
+/**
+ * Validate the private source root while allowing either a real directory or
+ * one top-level symlink/junction to a real directory. The assets directory
+ * itself must remain a real direct child so category traversal cannot escape
+ * through a nested link.
+ */
+export async function inspectPrivateAssetsRoot(projectRoot = PROJECT_ROOT) {
+    const privateRoots = await resolvePrivateSourceRoot(projectRoot);
+    if (!privateRoots) return null;
+    const { privateRoot, realPrivateRoot } = privateRoots;
+
+    const assetsRoot = path.join(privateRoot, 'assets');
+    let assetsInfo;
+    try {
+        assetsInfo = await lstat(assetsRoot);
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            throw new Error(`Private source root exists but is missing the required assets directory: ${assetsRoot}`);
+        }
+        throw error;
+    }
+    if (assetsInfo.isSymbolicLink() || !assetsInfo.isDirectory()) {
+        throw new Error(`Private asset source root must be a real directory: ${assetsRoot}`);
+    }
+
+    const realAssetsRoot = await realpath(assetsRoot);
+    const relativeAssetsRoot = path.relative(realPrivateRoot, realAssetsRoot);
+    const normalizedRelativeAssetsRoot = process.platform === 'win32'
+        ? relativeAssetsRoot.toLowerCase()
+        : relativeAssetsRoot;
+    if (normalizedRelativeAssetsRoot !== 'assets') {
+        throw new Error(`Private assets directory must resolve to the direct assets child of ${realPrivateRoot}`);
+    }
+
+    return {
+        privateRoot,
+        assetsRoot,
+        realPrivateRoot,
+        realAssetsRoot,
+        privateRootIsSymlink: privateRoots.privateRootIsSymlink
+    };
 }
 
 export { PROJECT_ROOT };

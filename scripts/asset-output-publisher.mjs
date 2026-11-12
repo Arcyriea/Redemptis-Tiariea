@@ -12,6 +12,7 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { validateCommittedAssetOutputs } from './package-assets.mjs';
+import { inspectPrivateAssetsRoot } from './asset-registry.mjs';
 
 const LOCK_NAME = '.asset-package.lock';
 const JOURNAL_NAME = '.asset-package-transaction.jsonl';
@@ -131,11 +132,9 @@ async function getProcessStartIdentity() {
 }
 
 async function acquireLock(projectRoot) {
-    const privateRoot = path.join(projectRoot, 'private');
-    const privateInfo = await lstat(privateRoot);
-    if (privateInfo.isSymbolicLink() || !privateInfo.isDirectory()) {
-        throw new Error(`Private source root exists but is not a real directory: ${privateRoot}`);
-    }
+    const privateRoots = await inspectPrivateAssetsRoot(projectRoot);
+    if (!privateRoots) throw new Error(`Private source root is missing: ${path.join(projectRoot, 'private')}`);
+    const privateRoot = privateRoots.privateRoot;
     const lockPath = path.join(privateRoot, LOCK_NAME);
     const owner = {
         pid: process.pid,

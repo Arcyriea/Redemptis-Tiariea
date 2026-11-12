@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { PROJECT_ROOT, resolveAssetSource } from './asset-registry.mjs';
+import { inspectPrivateAssetsRoot, PROJECT_ROOT, resolveAssetSource } from './asset-registry.mjs';
 import { derivePlanetIdentity, readPlanetApprovals } from './asset-contract.mjs';
 import { validateCommittedAssetOutputs, validateRtabBundle } from './package-assets.mjs';
 
@@ -131,17 +131,8 @@ async function inspectCurrentPlanetInventory(projectRoot) {
     assert.deepEqual(records.map((record) => record.assetId).sort(), expectedBundleAssets.map((asset) => asset.assetId).sort());
 
     const sourceHashes = new Map();
-    const privateAssetsRoot = path.join(projectRoot, 'private', 'assets');
-    let assetsRootInfo = null;
-    try {
-        assetsRootInfo = await lstat(privateAssetsRoot);
-    } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-    }
-    if (assetsRootInfo) {
-        if (assetsRootInfo.isSymbolicLink() || !assetsRootInfo.isDirectory()) {
-            throw new Error(`Private source root is not a real directory: ${privateAssetsRoot}`);
-        }
+    const privateRoots = await inspectPrivateAssetsRoot(projectRoot);
+    if (privateRoots) {
         for (const [logicalPath, approvedHash] of approvedByPath) {
             const sourcePath = resolveAssetSource(logicalPath, projectRoot);
             const info = await lstat(sourcePath);
@@ -222,11 +213,13 @@ export async function verifyCleanClone({ projectRoot = PROJECT_ROOT } = {}) {
         for (const [logicalPath, { sourcePath, sourceHash }] of sourceHashesBeforeClone) {
             assert.equal(sha256(await readFile(sourcePath)), sourceHash, `${logicalPath} changed during verification`);
         }
-        const gitIgnore = spawnSync('git', ['check-ignore', '--quiet', '--', 'private/assets/Ships/human-dreadnought.svg'], {
+        // Git cannot descend through a symlink path when checking an ignored
+        // child, so verify the canonical top-level private entry itself.
+        const gitIgnore = spawnSync('git', ['check-ignore', '--quiet', '--', 'private'], {
             cwd: projectRoot,
             encoding: 'utf8'
         });
-        if (gitIgnore.status !== 0) throw new Error('git check-ignore did not ignore the canonical private source path.');
+        if (gitIgnore.status !== 0) throw new Error('git check-ignore did not ignore the private source root.');
         return {
             cloneRoot,
             verifiedBundles: manifest.bundles.map((bundle) => bundle.bundleId),

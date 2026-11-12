@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -840,6 +840,38 @@ test('empty category directories do not create bundles', async () => {
     });
 });
 
+test('preparation publishes successfully when private is a top-level directory symlink', async (t) => {
+    await createProjectFixture(async (projectRoot) => {
+        const privateRoot = path.join(projectRoot, 'private');
+        const externalParent = await mkdtemp(path.join(os.tmpdir(), 'rtab-linked-private-'));
+        const externalPrivateRoot = path.join(externalParent, 'private-store');
+        try {
+            await cp(privateRoot, externalPrivateRoot, { recursive: true });
+            await rm(privateRoot, { recursive: true });
+            try {
+                await symlink(externalPrivateRoot, privateRoot, process.platform === 'win32' ? 'junction' : 'dir');
+            } catch (error: any) {
+                if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) {
+                    t.skip(`directory symlink creation is unavailable: ${error.code}`);
+                    return;
+                }
+                throw error;
+            }
+
+            const result = await prepareAssets({ projectRoot });
+            assert.equal(result.mode, 'package');
+            const published = JSON.parse(await readFile(path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'), 'utf8'));
+            assert.equal(published.assets.length, 34);
+            assert.equal(published.bundles.find((bundle: any) => bundle.bundleId === 'planets')?.assetCount, 3);
+            assert.equal((await lstat(privateRoot)).isSymbolicLink(), true);
+            await assert.rejects(lstat(path.join(externalPrivateRoot, '.asset-package.lock')));
+            await assert.rejects(lstat(path.join(externalPrivateRoot, '.asset-package-transaction.jsonl')));
+        } finally {
+            await rm(externalParent, { recursive: true, force: true });
+        }
+    });
+});
+
 test('category traversal rejects symbolic links and special filesystem entries', async (t) => {
     await createProjectFixture(async (projectRoot) => {
         const target = path.join(projectRoot, 'private', 'assets', 'Ships', 'human-frigate.svg');
@@ -1142,7 +1174,7 @@ test('an existing but invalid private root is not treated as an absent clean clo
         await prepareAssets({ projectRoot });
         await rm(path.join(projectRoot, 'private'), { recursive: true });
         await writeFile(path.join(projectRoot, 'private'), 'not a directory');
-        await assert.rejects(prepareAssets({ projectRoot }), /exists but is not a real directory/);
+        await assert.rejects(prepareAssets({ projectRoot }), /Private source root target is not a directory/);
     });
 });
 
@@ -1178,7 +1210,7 @@ test('an existing private/assets path must be a real directory', async () => {
         await rm(path.join(privateRoot, 'assets'), { recursive: true });
         await writeFile(path.join(privateRoot, 'assets'), 'not a directory');
 
-        await assert.rejects(prepareAssets({ projectRoot }), /Private asset source root exists but is not a real directory/);
+        await assert.rejects(prepareAssets({ projectRoot }), /Private asset source root must be a real directory/);
         await assertSnapshotUnchanged(outputs);
     });
 });

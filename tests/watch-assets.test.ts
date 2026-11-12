@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { execFileSync } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, rm, rmdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -77,6 +76,14 @@ test('asset watcher path filtering covers private lifecycle and registry on Wind
     );
     assert.equal(isRelevantAssetWatchPath('private\\other.txt', root, 'win32'), false);
     assert.equal(isRelevantAssetWatchPath('..\\outside.svg', root, 'win32'), false);
+    assert.equal(
+        isRelevantAssetWatchPath('E:\\Mega\\private\\assets\\Planets\\Hushanyia.png', root, 'win32', 'E:\\Mega\\private'),
+        true
+    );
+    assert.equal(
+        isRelevantAssetWatchPath('E:\\Mega\\private\\.asset-package-lock', root, 'win32', 'E:\\Mega\\private'),
+        false
+    );
 });
 
 test('asset watcher debounces relevant events and ignores transaction-control files', async () => {
@@ -144,6 +151,44 @@ test('asset watcher serializes preparations and coalesces events during an activ
     assert.equal(server.reloads.length, 1);
     assert.equal(maximumActive, 1);
     await plugin.closeServer();
+});
+
+test('asset watcher follows relevant events under an external private-root symlink target', async (t) => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'asset-watch-linked-project-'));
+    const externalRoot = await mkdtemp(path.join(os.tmpdir(), 'asset-watch-linked-source-'));
+    const privateLink = path.join(projectRoot, 'private');
+    await mkdir(path.join(externalRoot, 'assets', 'Planets'), { recursive: true });
+    try {
+        try {
+            await symlink(externalRoot, privateLink, process.platform === 'win32' ? 'junction' : 'dir');
+        } catch (error: any) {
+            if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) {
+                t.skip(`directory symlink creation is unavailable: ${error.code}`);
+                return;
+            }
+            throw error;
+        }
+
+        let calls = 0;
+        const plugin = createAssetWatcherPlugin({
+            projectRoot,
+            debounceMs: 20,
+            prepare: async () => { calls += 1; }
+        });
+        const server = createFakeServer();
+        await plugin.configureServer(server);
+        assert.equal(calls, 1);
+
+        server.watcher.emit('all', 'change', path.join(externalRoot, 'assets', 'Planets', 'Hushanyia.png'));
+        await waitFor(() => calls === 2);
+        server.watcher.emit('all', 'change', path.join(externalRoot, '.asset-package-lock'));
+        await delay(70);
+        assert.equal(calls, 2);
+        await plugin.closeServer();
+    } finally {
+        await rm(projectRoot, { recursive: true, force: true });
+        await rm(externalRoot, { recursive: true, force: true });
+    }
 });
 
 test('asset watcher does not lose changes observed during startup reconciliation', async () => {
@@ -247,20 +292,9 @@ test('asset watcher disposal cancels pending reconciliation', async () => {
     assert.equal(server.watcher.listenerCount('error'), 0);
 });
 
-test('installed Vite watcher detects changes and directory lifecycle inside ignored private/assets on Windows', {
+test('installed Vite watcher detects changes and directory lifecycle inside private/assets on Windows', {
     skip: process.platform !== 'win32'
 }, async () => {
-    const privateRoot = path.join(REPOSITORY_ROOT, 'private');
-    let createdPrivate = false;
-    try {
-        await lstat(privateRoot);
-    } catch (error: any) {
-        if (error.code !== 'ENOENT') {
-            throw error;
-        }
-        createdPrivate = true;
-    }
-
     let watchRoot: string | undefined;
     let viteServer: ViteDevServer | undefined;
     let reconcileCount = 0;
@@ -277,10 +311,7 @@ test('installed Vite watcher detects changes and directory lifecycle inside igno
     };
 
     try {
-        await mkdir(privateRoot, { recursive: true });
-        watchRoot = await mkdtemp(path.join(privateRoot, 'WatcherIntegration-'));
-        const ignoredPath = path.relative(REPOSITORY_ROOT, watchRoot);
-        execFileSync('git', ['check-ignore', '--quiet', '--', ignoredPath], { cwd: REPOSITORY_ROOT });
+        watchRoot = await mkdtemp(path.join(os.tmpdir(), 'WatcherIntegration-'));
 
         const ready = deferred();
         const readyPlugin: Plugin = {
@@ -352,12 +383,74 @@ test('installed Vite watcher detects changes and directory lifecycle inside igno
         if (watchRoot) {
             await rm(watchRoot, { recursive: true, force: true });
         }
-        if (createdPrivate) {
-            await rmdir(privateRoot).catch((error: NodeJS.ErrnoException) => {
-                if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') {
-                    throw error;
-                }
-            });
+    }
+});
+
+test('installed Vite watcher follows changes under a linked private source root on Windows', {
+    skip: process.platform !== 'win32'
+}, async (t) => {
+    const watchRoot = await mkdtemp(path.join(os.tmpdir(), 'WatcherLinkedProject-'));
+    const externalPrivateRoot = await mkdtemp(path.join(os.tmpdir(), 'WatcherLinkedSources-'));
+    const privateLink = path.join(watchRoot, 'private');
+    await mkdir(path.join(externalPrivateRoot, 'assets', 'Ships'), { recursive: true });
+    try {
+        try {
+            await symlink(externalPrivateRoot, privateLink, 'junction');
+        } catch (error: any) {
+            if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) {
+                t.skip(`junction creation is unavailable: ${error.code}`);
+                return;
+            }
+            throw error;
         }
+
+        const ready = deferred();
+        const readyPlugin: Plugin = {
+            name: 'asset-watcher-linked-ready',
+            enforce: 'pre',
+            configureServer(server) {
+                server.watcher.once('ready', ready.resolve);
+            }
+        };
+        let reconcileCount = 0;
+        let viteServer: ViteDevServer | undefined;
+        const observedEvents: string[] = [];
+        const assetPlugin = createAssetWatcherPlugin({
+            projectRoot: watchRoot,
+            debounceMs: 50,
+            prepare: async () => { reconcileCount += 1; }
+        });
+        try {
+            viteServer = await createServer({
+                root: watchRoot,
+                configFile: false,
+                publicDir: false,
+                server: { host: '127.0.0.1', port: 0, strictPort: true },
+                plugins: [readyPlugin, assetPlugin]
+            });
+            viteServer.watcher.on('all', (event, eventPath) => observedEvents.push(`${event}:${eventPath}`));
+            await viteServer.listen();
+            await ready.promise;
+            assert.equal(reconcileCount, 1);
+            const baseline = reconcileCount;
+            const sourceFile = path.join(externalPrivateRoot, 'assets', 'Ships', 'linked-ship.svg');
+            await writeFile(sourceFile, '<svg/>');
+            try {
+                await waitFor(() => reconcileCount > baseline);
+            } catch (error) {
+                throw new Error(`${(error as Error).message}; Vite events: ${observedEvents.join(', ')}; watched: ${JSON.stringify(viteServer.watcher.getWatched())}`);
+            }
+            const afterAssetChange = reconcileCount;
+            await writeFile(path.join(externalPrivateRoot, '.asset-package-lock'), '{}');
+            await delay(150);
+            assert.equal(reconcileCount, afterAssetChange);
+            await rm(sourceFile);
+            await waitFor(() => reconcileCount > afterAssetChange);
+        } finally {
+            await viteServer?.close();
+        }
+    } finally {
+        await rm(watchRoot, { recursive: true, force: true });
+        await rm(externalPrivateRoot, { recursive: true, force: true });
     }
 });
