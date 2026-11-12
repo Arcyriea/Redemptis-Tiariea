@@ -247,6 +247,10 @@ When a fighter requests weapon fire, `WeaponManager` handles the firing request,
 
 This division allows tactical coordination, individual entity behavior, weapon operations, and projectile management to remain independent responsibilities.
 
+### 3.5 Weapon Content and Behavior Architecture (Proposed)
+
+Weapon content authoring is separate from weapon runtime behavior. Future Lua weapon definitions should be parsed and validated into typed runtime definitions, then registered before runtime use. A content compiler or loader and a behavior registry are separate responsibilities. If `WeaponManager` is implemented, it should not parse arbitrary Lua scripts or own every specialized weapon implementation. This proposal does not require a new manager solely for the Lua pipeline. See [Weapon Content and Behavior Architecture](docs/WEAPON-CONTENT-AND-BEHAVIOR-ARCHITECTURE.md) for boundaries, proposed flow, and current status.
+
 ---
 
 ## 4. Spatial Management and Navigation
