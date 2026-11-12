@@ -15,7 +15,9 @@ import {
     HullModificationDefinition,
     HullModificationId,
     LegacyCompatibilityView,
-    ShipLoadout
+    ShipLoadout,
+    toHullPartId,
+    toHullPointId
 } from '../types/Shipmaker';
 import { ShipDataAdapter } from './ShipDataAdapter';
 
@@ -40,6 +42,7 @@ export class Game {
     public componentData: any = {};
     public shipPartsData: any[] = []; // Player ship parts
     public yardPartsData: any[] = []; // Enemy/AI parts
+    public playerVisualSprites: Array<{ textureKey: string; x: number; y: number; scale?: number }> = [];
     public knownSectors: string[] = []; // Sector keys
     public tasks: any[] = [];
     public commander: any = null;
@@ -121,16 +124,61 @@ export class Game {
 
         this.shipData = {};
 
-        // Player weapon component definition
-        // Format per Weapon.init(): [type, subType, damage, range, cooldown, energyCost, projectileSpeed, splashRadius]
-        this.componentData = {
-            "PlayerCannon": ["Weapon", "ProjectileArcade", 10, 400, 0.15, 5, 600, 0] // cooldown 0.15s = 150ms
-        };
+        this.componentData = {};
 
         // --- Shipmaker Phase 1: Legacy Ingest ---
         ShipDataAdapter.ingestLegacyData(this);
 
+        const playerMountId = toHullPointId('mount.player.spinal');
+        this.componentDefinitions.set('PlayerCannon', {
+            id: 'PlayerCannon',
+            kind: 'weapon',
+            configuration: 'spinal',
+            operation: {
+                firingMode: 'ProjectileArcade',
+                damage: 10,
+                range: 400,
+                cooldown: 0.15,
+                energyCost: 5,
+                projectileSpeed: 600,
+                splashRadius: 0
+            },
+            attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 },
+            visuals: { fixed: [] },
+            geometry: { muzzles: [] }
+        });
+
+        this.hullDefinitions.set('hull.player', {
+            id: 'hull.player',
+            parts: [{
+                id: toHullPartId('part.player.central-hull'),
+                name: 'central-hull',
+                position: { x: 0, y: 0 },
+                rotationDeg: 0,
+                isLoot: false
+            }],
+            sprites: [],
+            weaponHardpoints: [{
+                id: playerMountId,
+                position: { x: 0, y: 0 },
+                rotationDeg: 0,
+                accepts: ['spinal'],
+                restrictions: {}
+            }],
+            activeModuleMounts: [],
+            thrusterVents: [],
+            utilitySockets: [],
+            hullModCapacity: 0
+        });
+
+        this.shipLoadouts.set('loadout.player', {
+            id: 'loadout.player',
+            installations: [{ mountId: playerMountId, componentId: 'PlayerCannon' }]
+        });
+
         this.shipManager?.registerBlueprint('ship.player', 'player', {
+            hullId: 'hull.player',
+            loadoutId: 'loadout.player',
             superType: 'Ship',
             subType: 'Player',
             name: 'Player Ship',
@@ -146,26 +194,17 @@ export class Game {
                 weight: 10,
                 radius: 20,
                 value: 0
-            },
-            gameplay: {
-                parts: [
-                    { name: 'central-hull', x: 0, y: 0, rotation: 0, isLoot: false }
-                ],
-                components: [
-                    { partIndex: 0, name: 'PlayerCannon' }
-                ]
-            },
-            visual: {
-                sprites: [
-                    { textureKey: 'human-dreadnought', x: 0, y: 0, scale: 0.18 },
-                    { textureKey: 'ship-wing', x: -20, y: -25 },
-                    { textureKey: 'ship-wing', x: -20, y: 25 },
-                    { textureKey: 'hardpoint', x: 30, y: 0 },
-                    { textureKey: 'hardpoint', x: -10, y: -20 },
-                    { textureKey: 'hardpoint', x: -10, y: 20 }
-                ]
             }
         });
+
+        this.playerVisualSprites = [
+            { textureKey: 'human-dreadnought', x: 0, y: 0, scale: 0.18 },
+            { textureKey: 'ship-wing', x: -20, y: -25 },
+            { textureKey: 'ship-wing', x: -20, y: 25 },
+            { textureKey: 'hardpoint', x: 30, y: 0 },
+            { textureKey: 'hardpoint', x: -10, y: -20 },
+            { textureKey: 'hardpoint', x: -10, y: 20 }
+        ];
 
         // Keep the catalogue populated for any remaining legacy ship definitions.
         this.shipManager?.syncFromGame();

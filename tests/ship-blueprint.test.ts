@@ -9,13 +9,14 @@ function createConfiguredGame(): Game {
     Game.instance = game;
     game.shipData = {};
     game.componentData = {};
+    game.shipQueue = [];
     game.shipManager = new ShipManager(game);
     game.loadGameData();
     game.objectPool = new ObjectPool();
     return game;
 }
 
-test('player blueprint is catalogue-backed and separates gameplay from visuals', () => {
+test('player blueprint is catalogue-backed and uses canonical hull, loadout, and scene visuals', () => {
     const game = createConfiguredGame();
     const blueprint = game.shipManager!.getBlueprint('ship.player');
 
@@ -26,22 +27,69 @@ test('player blueprint is catalogue-backed and separates gameplay from visuals',
     assert.equal(blueprint.isLoaded, true);
     assert.equal(blueprint.definition, blueprint.shipDefinition);
     assert.equal(game.shipData.player, undefined);
-    assert.deepEqual(blueprint.shipDefinition?.gameplay.parts, [
-        { name: 'central-hull', x: 0, y: 0, rotation: 0, isLoot: false }
-    ]);
-    assert.deepEqual(blueprint.shipDefinition?.gameplay.components, [
-        { partIndex: 0, name: 'PlayerCannon' }
-    ]);
-    assert.deepEqual(blueprint.shipDefinition?.visual.sprites, [
+    assert.equal(game.componentData.PlayerCannon, undefined);
+    assert.deepEqual(
+        {
+            hullId: blueprint.shipDefinition && 'hullId' in blueprint.shipDefinition
+                ? blueprint.shipDefinition.hullId
+                : undefined,
+            loadoutId: blueprint.shipDefinition && 'loadoutId' in blueprint.shipDefinition
+                ? blueprint.shipDefinition.loadoutId
+                : undefined
+        },
+        { hullId: 'hull.player', loadoutId: 'loadout.player' }
+    );
+
+    const hull = game.hullDefinitions.get('hull.player');
+    assert.ok(hull);
+    assert.deepEqual(hull?.parts, [{
+        id: 'part.player.central-hull',
+        name: 'central-hull',
+        position: { x: 0, y: 0 },
+        rotationDeg: 0,
+        isLoot: false
+    }]);
+    assert.deepEqual(hull?.weaponHardpoints, [{
+        id: 'mount.player.spinal',
+        position: { x: 0, y: 0 },
+        rotationDeg: 0,
+        accepts: ['spinal'],
+        restrictions: {}
+    }]);
+
+    const loadout = game.shipLoadouts.get('loadout.player');
+    assert.deepEqual(loadout?.installations, [{
+        mountId: 'mount.player.spinal',
+        componentId: 'PlayerCannon'
+    }]);
+
+    const playerCannon = game.componentDefinitions.get('PlayerCannon');
+    assert.ok(playerCannon);
+    assert.equal(playerCannon?.kind, 'weapon');
+    assert.equal(playerCannon?.kind === 'weapon' ? playerCannon.configuration : undefined, 'spinal');
+    assert.deepEqual(playerCannon?.kind === 'weapon' ? playerCannon.operation : undefined, {
+        firingMode: 'ProjectileArcade',
+        damage: 10,
+        range: 400,
+        cooldown: 0.15,
+        energyCost: 5,
+        projectileSpeed: 600,
+        splashRadius: 0
+    });
+    assert.deepEqual(playerCannon?.kind === 'weapon' ? playerCannon.attachment : undefined, {
+        position: { x: 0, y: 0 },
+        attachmentRotationDeg: 0
+    });
+    assert.deepEqual(playerCannon?.kind === 'weapon' ? playerCannon.visuals.fixed : undefined, []);
+    assert.deepEqual(playerCannon?.kind === 'weapon' ? playerCannon.geometry.muzzles : undefined, []);
+
+    assert.deepEqual(game.playerVisualSprites, [
         { textureKey: 'human-dreadnought', x: 0, y: 0, scale: 0.18 },
         { textureKey: 'ship-wing', x: -20, y: -25 },
         { textureKey: 'ship-wing', x: -20, y: 25 },
         { textureKey: 'hardpoint', x: 30, y: 0 },
         { textureKey: 'hardpoint', x: -10, y: -20 },
         { textureKey: 'hardpoint', x: -10, y: 20 }
-    ]);
-    assert.deepEqual(game.componentData.PlayerCannon, [
-        'Weapon', 'ProjectileArcade', 10, 400, 0.15, 5, 600, 0
     ]);
 });
 
@@ -100,7 +148,16 @@ test('Ship.init builds the player runtime ship and preserves its effective stats
     assert.equal(ship.components.length, 1);
     assert.equal(ship.compWeapon.length, 1);
     assert.equal(ship.components[0], ship.compWeapon[0]);
-    assert.equal(ship.compWeapon[0].subType, 'ProjectileArcade');
+    assert.equal(ship.compWeapon[0].installationSource, 'loadout');
+    assert.equal(ship.compWeapon[0].fixed, false);
+    assert.deepEqual(
+        [ship.compWeapon[0].shipPart.x, ship.compWeapon[0].shipPart.y, ship.compWeapon[0].shipPart.rotation],
+        [0, 0, 0]
+    );
+    assert.equal(ship.subType, 'Player');
+    assert.equal(ship.tractor?.ship, ship);
+    assert.equal(game.shipQueue.includes(ship), false);
+    assert.equal(ship.compWeapon[0].effect?.type, 'ProjectileArcade');
     assert.equal(ship.compWeapon[0].effect?.damage, 10);
     assert.equal(ship.compWeapon[0].effect?.range, 400);
     assert.equal(ship.compWeapon[0].effect?.projectileSpeed, 600);

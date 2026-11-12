@@ -261,12 +261,12 @@ class GameScene extends Phaser.Scene {
 
         const playerBlueprint = this.engine.shipManager?.getBlueprintForSourceKey('player');
         const playerDefinition = playerBlueprint?.shipDefinition;
-        if (!playerBlueprint || !playerDefinition || !('visual' in playerDefinition)) {
+        if (!playerBlueprint || !playerDefinition || !('hullId' in playerDefinition)) {
             throw new Error('The player ship blueprint is not registered.');
         }
 
         this.player = this.add.container(400, 300);
-        for (const visual of playerDefinition.visual.sprites) {
+        for (const visual of this.engine.playerVisualSprites) {
             const sprite = this.add.sprite(visual.x, visual.y, visual.textureKey);
             if (visual.scale !== undefined) sprite.setScale(visual.scale);
             this.player.add(sprite);

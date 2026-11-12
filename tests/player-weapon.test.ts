@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { Game } from '../src/core/Game';
 import { Component } from '../src/entities/Component';
 import { Ship } from '../src/entities/Ship';
+import { ManagedWeapon } from '../src/weapons/ManagedWeapon';
 
 function createPlayerCannon() {
     const game = Object.create(Game.prototype) as Game;
@@ -50,6 +51,29 @@ test('weapon tuple configures component and weapon stats without changing legacy
         [passive.value, passive.cooldown, passive.energyCost, passive.description],
         [7, 2, 3, 'legacy description']
     );
+});
+
+test('canonical PlayerCannon reaches ManagedWeapon with preserved values and cooldown behavior', async () => {
+    const game = new Game();
+    const ship = game.objectPool!.getShipObject('player');
+    assert.ok(ship);
+    if (!ship) throw new Error('Expected the player ship to be acquired.');
+
+    const component = ship.compWeapon[0];
+    const weapon = component?.effect;
+    assert.ok(weapon instanceof ManagedWeapon);
+    assert.deepEqual(
+        [weapon.type, weapon.damage, weapon.range, weapon.cooldown, weapon.energyCost, weapon.projectileSpeed, weapon.splashRadius],
+        ['ProjectileArcade', 10, 400, 0.15, 5, 600, 0]
+    );
+
+    weapon.activate = async () => true;
+    assert.equal(await component.activate(), true);
+    assert.equal(ship.currentEnergy, 95);
+    component.update(149);
+    assert.equal(component.ready, false);
+    component.update(1);
+    assert.equal(component.ready, true);
 });
 
 test('failed async weapon activation does not spend energy or start cooldown', async () => {

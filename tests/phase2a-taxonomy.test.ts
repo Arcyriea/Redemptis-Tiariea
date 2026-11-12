@@ -328,53 +328,17 @@ test('no dangling canonical ShipLoadout installation references for legacy compo
     assert.equal(loadout.installations.length, 0, 'Canonical loadout should not contain legacy components');
 });
 
-test('existing PlayerCannon runtime behavior is preserved', () => {
+test('PlayerCannon uses canonical records registered after legacy ingestion', () => {
     const game = new Game();
-    // Setup exactly as Game.loadGameData does
-    game.componentData = {
-        "PlayerCannon": ["Weapon", "ProjectileArcade", 10, 400, 0.15, 5, 600, 0]
-    };
-    ShipDataAdapter.ingestLegacyData(game);
-    game.shipManager!.syncFromGame();
-    
-    // Register player blueprint
-    game.shipManager!.registerBlueprint('ship.player', 'player', {
-        hullId: 'hull.player',
-        loadoutId: 'loadout.player',
-        superType: 'Ship',
-        subType: 'Player',
-        name: 'Player Ship',
-        categoryType: 'Air',
-        stats: { maxHull: 25, maxShell: 50, regenShell: 0, maxEnergy: 100, maxSpeed: 5, acceleration: 0.5, weight: 10, radius: 20, value: 0 }
-    });
-    
-    // We need to ensure a hull exists for the init to succeed
-    game.hullDefinitions.set('hull.player', {
-        id: 'hull.player',
-        parts: [{ id: toHullPartId('p0'), name: 'central-hull', position: { x: 0, y: 0 }, rotationDeg: 0, isLoot: false }],
-        sprites: [],
-        weaponHardpoints: [], // Adapter will populate this for PlayerCannon
-        activeModuleMounts: [],
-        thrusterVents: [],
-        utilitySockets: [],
-        hullModCapacity: 0
-    });
-    
-    // Note: ShipDataAdapter.ingestLegacyData is called during Game.loadGameData
-    // But we are manually orchestrating here. We need to re-run ingest for the player ship.
-    game.shipData = {
-        player: [
-            [['central-hull', 0, 0, 0, false, 25]],
-            ['PlayerCannon'],
-            'Ship', 'Player', 'Player Ship', 'Air'
-        ]
-    };
-    ShipDataAdapter.ingestLegacyData(game);
-    
     const ship = new Ship();
     ship.init('player');
-    
+
+    assert.equal(game.componentData.PlayerCannon, undefined);
+    assert.equal(game.componentDefinitions.get('PlayerCannon')?.kind, 'weapon');
+    assert.equal(game.hullDefinitions.has('hull.player'), true);
+    assert.equal(game.shipLoadouts.has('loadout.player'), true);
     assert.equal(ship.compWeapon.length, 1);
     assert.equal(ship.compWeapon[0].type, 'Weapon');
-    assert.equal(ship.compWeapon[0].installationSource, 'legacy');
+    assert.equal(ship.compWeapon[0].installationSource, 'loadout');
+    assert.equal(ship.compWeapon[0].fixed, false);
 });

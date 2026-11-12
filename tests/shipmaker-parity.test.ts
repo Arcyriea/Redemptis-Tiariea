@@ -4,6 +4,7 @@ import { Game } from '../src/core/Game';
 import { ShipDataAdapter } from '../src/core/ShipDataAdapter';
 import { Component } from '../src/entities/Component';
 import { Ship } from '../src/entities/Ship';
+import { ManagedWeapon } from '../src/weapons/ManagedWeapon';
 import {
     ComponentDefinition,
     LegacyComponentTuple,
@@ -131,17 +132,20 @@ test('legacy compatibility maps part-index attachments to distinct hull points w
     assert.equal(ship.components[0].shipPart, ship.parts[0]);
 });
 
-test('legacy PlayerCannon operation values and player initialization behavior are preserved', () => {
+test('canonical PlayerCannon operation values and player initialization behavior are preserved', () => {
     const game = new Game();
     const ship = new Ship();
     ship.init('player');
 
     const weapon = ship.compWeapon[0].effect;
     assert.ok(weapon);
+    assert.equal(weapon instanceof ManagedWeapon, true);
     assert.deepEqual(
         [weapon.type, weapon.damage, weapon.range, weapon.cooldown, weapon.energyCost, weapon.projectileSpeed, weapon.splashRadius],
         ['ProjectileArcade', 10, 400, 0.15, 5, 600, 0]
     );
+    assert.equal(ship.components[0].installationSource, 'loadout');
+    assert.equal(ship.components[0].fixed, false);
     assert.equal(ship.tractor?.ship, ship);
     assert.equal(game.shipQueue.includes(ship), false);
 });
