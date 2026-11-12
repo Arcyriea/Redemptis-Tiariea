@@ -1,6 +1,12 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { lstat, readFile } from 'node:fs/promises';
 import { prepareAssets } from './prepare-assets.mjs';
 import { PROJECT_ROOT } from './asset-registry.mjs';
+import { readAssetRegistry, resolveAssetSource } from './asset-registry.mjs';
+import { readPlanetApprovals } from './asset-contract.mjs';
+import { validateCommittedAssetOutputs } from './package-assets.mjs';
+import { consumeDevPrepareMarker } from './dev-prepare-marker.mjs';
 
 const CONTROL_FILES = new Set([
     'private/.asset-package-lock',
@@ -78,6 +84,35 @@ export function createAssetWatcherPlugin({
     let viteServer = null;
     let onAll = null;
     let onError = null;
+
+    async function consumePreparedStartup() {
+        const markedGeneration = await consumeDevPrepareMarker(resolvedProjectRoot);
+        if (!markedGeneration) return false;
+        const { manifest } = await validateCommittedAssetOutputs({ projectRoot: resolvedProjectRoot });
+        if (manifest.generationId !== markedGeneration) return false;
+
+        const privateRoot = path.join(resolvedProjectRoot, 'private');
+        const privateInfo = await lstat(privateRoot).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
+        if (!privateInfo) return true;
+        const assetsInfo = await lstat(path.join(privateRoot, 'assets')).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
+        if (privateInfo.isSymbolicLink() || !privateInfo.isDirectory()
+            || !assetsInfo || assetsInfo.isSymbolicLink() || !assetsInfo.isDirectory()) return false;
+        const registry = await readAssetRegistry(resolvedProjectRoot);
+        const approvals = await readPlanetApprovals(resolvedProjectRoot);
+        const assets = [
+            ...registry.assets,
+            ...[...approvals.keys()].map((logicalPath) => ({ logicalPath }))
+        ];
+        const manifestAssets = new Map(manifest.assets.map((asset) => [asset.logicalPath, asset]));
+        for (const asset of assets) {
+            const current = manifestAssets.get(asset.logicalPath);
+            if (!current) return false;
+            const sourcePath = resolveAssetSource(asset.logicalPath, resolvedProjectRoot);
+            const source = await readFile(sourcePath).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
+            if (!source || createHash('sha256').update(source).digest('hex') !== current.sourceSha256) return false;
+        }
+        return true;
+    }
 
     function clearTimer() {
         if (debounceTimer !== null) {
@@ -203,7 +238,9 @@ export function createAssetWatcherPlugin({
             dirty = false;
 
             try {
-                await reconcile(true);
+                const prepared = await consumePreparedStartup();
+                if (prepared) serverLogger?.info('Using the successful npm predev reconciliation; skipped duplicate publication.');
+                else await reconcile(true);
             } catch (error) {
                 await dispose();
                 throw error;

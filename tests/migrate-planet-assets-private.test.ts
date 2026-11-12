@@ -21,14 +21,19 @@ async function createFixture(run: (projectRoot: string) => Promise<void>) {
     await mkdir(path.join(projectRoot, 'public', 'assets', 'Planets'), { recursive: true });
     await mkdir(path.join(projectRoot, 'private', 'assets'), { recursive: true });
     await writeFile(path.join(projectRoot, 'scripts', 'asset-registry.json'), registry);
-    await writeFile(
-        path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'),
-        await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json'))
-    );
+    const currentApprovals = JSON.parse(await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json'), 'utf8'));
+    const approvals = Object.fromEntries(PLANET_FILES.map((filename) => {
+        const logicalPath = `assets/Planets/${filename}`;
+        return [logicalPath, currentApprovals.approvals[logicalPath]];
+    }));
+    await writeFile(path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'), `${JSON.stringify({
+        approvalSchemaVersion: '1', approvals
+    }, null, 2)}\n`);
     for (const filename of [...PLANET_FILES, ...DEFERRED_FILES]) {
+        const sourceName = PLANET_FILES.includes(filename) ? filename : 'Map-111.png';
         await writeFile(
             path.join(projectRoot, 'public', 'assets', 'Planets', filename),
-            await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'Planets', filename))
+            await readFile(path.join(REPOSITORY_ROOT, 'private', 'assets', 'Planets', sourceName))
         );
     }
 

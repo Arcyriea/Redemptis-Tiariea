@@ -28,14 +28,15 @@ function resealIndexAndBundle(bytes: Buffer, sourceBundle: RuntimeBundleMetadata
     return { ...sourceBundle, bundleSha256: sha256(bytes) };
 }
 
-test('validates schema 1.3 and the generated current 34-asset inventory', async () => {
+test('validates schema 1.3 and the generated current runtime inventory', async () => {
     const manifest = await validateRuntimeManifest(await readManifest(), webcrypto.subtle);
-    assert.equal(manifest.assets.length, 34);
+    const approvedPlanetCount = Object.keys(runtimeAssetContract.approvedPlanetSourceSha256).length;
+    assert.equal(manifest.assets.length, 31 + approvedPlanetCount);
     assert.equal(manifest.assets.filter((asset) => asset.contentType === 'SVG').length, 31);
-    assert.equal(manifest.assets.filter((asset) => asset.contentType === 'PNG').length, 3);
+    assert.equal(manifest.assets.filter((asset) => asset.contentType === 'PNG').length, approvedPlanetCount);
     assert.deepEqual(manifest.bundles.map((bundle) => [bundle.bundleId, bundle.formatVersion, bundle.assetCount]), [
         ['components', '1.0', 19],
-        ['planets', '1.1', 3],
+        ['planets', '1.1', approvedPlanetCount],
         ['ships', '1.0', 10],
         ['turrets-platforms', '1.0', 2]
     ]);

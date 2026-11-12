@@ -5,7 +5,7 @@ import saxes from 'saxes';
 import { fileURLToPath } from 'node:url';
 import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 import { assertPngAggregateLimits, PNG_LIMITS, validatePng } from './validate-png.mjs';
-import { buildRuntimeContract, derivePlanetIdentity, readPlanetApprovals, readPlanetPlacements, renderRuntimeContract } from './asset-contract.mjs';
+import { buildRuntimeContract, derivePlanetIdentity, PLANET_TEXTURE_KEY_PATTERN, readPlanetApprovals, readPlanetPlacements, renderRuntimeContract } from './asset-contract.mjs';
 import { parseBundleUrl } from '../src/assets/rtabContractShared.mjs';
 
 const HEADER_SIZE = 64;
@@ -209,7 +209,7 @@ function buildManifestSchema() {
                     properties: {
                         slot: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$' },
                         order: { type: 'integer', minimum: 1 },
-                        textureKey: { type: 'string', pattern: '^planetMap[1-9][0-9]*$' }
+                        textureKey: { type: 'string', pattern: PLANET_TEXTURE_KEY_PATTERN.source }
                     }
                 }
             },

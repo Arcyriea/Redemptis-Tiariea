@@ -45,8 +45,9 @@ function fakeImage(contentType: string, width = 32, height = 24): HTMLImageEleme
     return { naturalWidth: contentType === 'PNG' ? width : width, naturalHeight: height } as HTMLImageElement;
 }
 
-test('preflights all four bundles, decodes 34 assets, and returns 37 unique texture names', async () => {
+test('preflights all four bundles and decodes the complete generated runtime inventory', async () => {
     const fetcher = await runtimeFetch();
+    const manifest = await readJson('public/assets/asset-manifest.json');
     let decodeCalls = 0;
     const prepared = await preflightRtabAssets({
         fetcher,
@@ -56,9 +57,10 @@ test('preflights all four bundles, decodes 34 assets, and returns 37 unique text
             return contentType === 'PNG' ? fakeImage(contentType, 2000, 1000) : fakeImage(contentType);
         }
     });
-    assert.equal(prepared.assets.length, 34);
-    assert.equal(decodeCalls, 34);
-    assert.equal(expectedTextureNames(prepared).length, 37);
+    assert.equal(prepared.assets.length, manifest.assets.length);
+    assert.equal(decodeCalls, manifest.assets.length);
+    assert.equal(expectedTextureNames(prepared).length,
+        manifest.assets.length + manifest.assets.reduce((count: number, asset: any) => count + asset.aliases.length, 0));
 });
 
 test('rejects an altered planet payload independently of manifest metadata', () => {
@@ -203,7 +205,7 @@ test('registers every primary texture and alias and reuses each image for its al
     const prepared = await createPrepared();
     const manager = new FakeTextureManager();
     registerPreparedTextures(manager, prepared);
-    assert.equal(manager.textures.size, 37);
+    assert.equal(manager.textures.size, expectedTextureNames(prepared).length);
     const aliased = prepared.assets.find(({ asset }) => asset.aliases.includes('human-dreadnought'))!;
     assert.equal(manager.textures.get(aliased.asset.textureKey), aliased.image);
     assert.equal(manager.textures.get('human-dreadnought'), aliased.image);
@@ -234,7 +236,11 @@ test('rolls back only textures registered by the current attempt after failure',
 test('preserves the three approved planet aliases and texture names in the prepared inventory', async () => {
     const prepared = await createPrepared();
     const names = new Set(expectedTextureNames(prepared));
-    for (const key of ['planetMap111', 'planetMap122', 'planetMap692', 'central-hull', 'human-dreadnought', 'alien-interceptor']) {
+    for (const key of [
+        'planetMap111', 'planetMap122', 'planetMap692',
+        'planetMapHushanyia', 'planetMapKansansas',
+        'central-hull', 'human-dreadnought', 'alien-interceptor'
+    ]) {
         assert.equal(names.has(key), true, `Missing texture key ${key}`);
     }
 });

@@ -16,6 +16,7 @@ const UINT32_MAX = 0xffff_ffffn;
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const PLANET_DIMENSIONS = Object.freeze({ width: 2000, height: 1000 });
+const PLANET_TEXTURE_KEY_PATTERN = /^planetMap(?:[1-9][0-9]*|[A-Z][A-Za-z0-9]*)$/;
 
 export const APPROVED_PLANET_SHA256: Readonly<Record<string, string>> = runtimeAssetContract.approvedPlanetSourceSha256;
 
@@ -149,7 +150,7 @@ export async function validateRuntimeManifest(
         exactKeys(item, ['slot', 'order', 'textureKey'], 'active planet placement');
         if (typeof item.slot !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(item.slot)
             || !Number.isSafeInteger(item.order) || Number(item.order) < 1
-            || typeof item.textureKey !== 'string' || !/^planetMap[1-9][0-9]*$/.test(item.textureKey)
+            || typeof item.textureKey !== 'string' || !PLANET_TEXTURE_KEY_PATTERN.test(item.textureKey)
             || placementSlots.has(item.slot) || placementOrders.has(Number(item.order))) {
             fail('active planet placements contain invalid or duplicate slots, orders, or keys.');
         }

@@ -16,7 +16,7 @@ const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
  *
  * Physical paths are absolute; logical paths and runtime URLs are repository-relative.
  */
-export const ASSET_ROOTS = Object.freeze([
+export const ASSET_SOURCE_ROOTS = Object.freeze([
     {
         physical: path.join(PROJECT_ROOT, 'private', 'assets'),
         logical: 'assets',
@@ -36,6 +36,9 @@ export const ASSET_ROOTS = Object.freeze([
         recursive: false
     }
 ]);
+
+// Backward-compatible name for existing package and runtime tooling.
+export const ASSET_ROOTS = ASSET_SOURCE_ROOTS;
 
 /** Prefix that identifies assets served through the public SVG manifest. */
 export const ASSETS_LOGICAL_PREFIX = 'assets';
@@ -98,6 +101,24 @@ export async function listSourceAssets() {
     return results;
 }
 
+export function resolveAssetSourcePath(logicalPath, projectRoot = PROJECT_ROOT) {
+    if (typeof logicalPath !== 'string' || logicalPath.includes('\\') || logicalPath.startsWith('/')) {
+        return null;
+    }
+    const segments = logicalPath.split('/');
+    if (segments.some((segment) => !segment || segment === '.' || segment === '..')) return null;
+    const root = resolvePhysicalDir(logicalPath);
+    if (!root) return null;
+    const rootRelative = path.relative(PROJECT_ROOT, root.physical);
+    const sourceRoot = path.resolve(projectRoot, rootRelative);
+    const suffix = root.logical
+        ? logicalPath.slice(root.logical.length).replace(/^\//, '')
+        : logicalPath;
+    const sourcePath = path.resolve(sourceRoot, ...suffix.split('/'));
+    if (sourcePath !== sourceRoot && !sourcePath.startsWith(`${sourceRoot}${path.sep}`)) return null;
+    return sourcePath;
+}
+
 /**
  * Resolve the physical source directory responsible for a logical asset path.
  * Longest-match wins so `assets/Components/...` is not claimed by the `assets/` root.
@@ -105,6 +126,11 @@ export async function listSourceAssets() {
  * @returns {{ physical: string, logical: string, urlPrefix: string } | null}
  */
 export function resolvePhysicalDir(logicalPath) {
+    if (typeof logicalPath !== 'string' || logicalPath.includes('\\') || logicalPath.startsWith('/')) {
+        return null;
+    }
+    const segments = logicalPath.split('/');
+    if (segments.some((segment) => !segment || segment === '.' || segment === '..')) return null;
     let best = null;
     for (const root of ASSET_ROOTS) {
         const prefix = root.logical ? `${root.logical}/` : null;
@@ -131,11 +157,12 @@ export function logicalPathToUrl(logicalPath) {
         return null;
     }
 
-    // Use the full logical path for the URL; the logical root identifies
-    // which physical directory owns the file, but the URL preserves the
-    // complete relative path including intermediate directory names.
-    const segments = logicalPath.split('/').map((segment) => encodeURIComponent(segment));
-    return `${root.urlPrefix}${segments.join('/')}`;
+    const suffix = root.logical
+        ? logicalPath.slice(root.logical.length).replace(/^\//, '')
+        : logicalPath;
+    const encodedSuffix = suffix.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+    if (!root.urlPrefix) return `/${encodedSuffix}`;
+    return `${root.urlPrefix}/${encodedSuffix}`;
 }
 
 /**

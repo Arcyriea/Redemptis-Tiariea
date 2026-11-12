@@ -46,6 +46,12 @@ const PLANET_ASSETS = [
         sourceSha256: '43652c4465b35a1e3ae4bf99bbb75308359179c9d1b3fd8711d38c806b1472a8'
     }
 ];
+const HISTORICAL_SCHEMA_1_2_BUNDLE_HASHES: Record<string, string> = {
+    components: 'c765204592f66b0431a41b7c20a3f4ff58559757883aa39f0a81ad864a1928df',
+    planets: '6d1b1206f74f207f7d8af01ab3a9d0b768d0f9021fe456753f894bb04a411814',
+    ships: '5a88e030dfbd0cecc8d2b51acf7e80dce2bdb36862838ba0ea113d84707fd65b',
+    'turrets-platforms': '943e47cfed1ff6e28bc4bca70efe0f42c9d1403b8e2a17c24643f8a61c9e126e'
+};
 
 type RegistryAsset = {
     assetId: string;
@@ -232,7 +238,10 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
     await writeFile(
         path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'),
-        await readFile(path.join(REPOSITORY_ROOT, 'scripts', 'planet-asset-approvals.json'))
+        `${JSON.stringify({
+            approvalSchemaVersion: '1',
+            approvals: Object.fromEntries(PLANET_ASSETS.map((asset) => [asset.logicalPath, asset.sourceSha256]))
+        }, null, 2)}\n`
     );
     await mkdir(path.join(projectRoot, 'src', 'generated'), { recursive: true });
     await mkdir(path.join(projectRoot, 'src', 'assets'), { recursive: true });
@@ -244,18 +253,33 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     const publicAssetsRoot = path.join(projectRoot, 'public', 'assets');
     await mkdir(publicAssetsRoot, { recursive: true });
     const currentManifest = JSON.parse(await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'asset-manifest.json'), 'utf8'));
+    const historicalAssetIds = new Set([
+        ...registry.assets.map((asset) => asset.assetId),
+        ...PLANET_ASSETS.map((asset) => asset.assetId)
+    ]);
+    const historicalAssets = currentManifest.assets.filter((asset: any) => historicalAssetIds.has(asset.assetId));
+    const historicalCounts = new Map<string, number>();
+    for (const asset of historicalAssets) {
+        historicalCounts.set(asset.bundleId, (historicalCounts.get(asset.bundleId) ?? 0) + 1);
+    }
     const fixedManifest = {
         manifestSchemaVersion: '1.2',
-        assets: currentManifest.assets,
-        bundles: currentManifest.bundles.map((bundle: any) => ({
-            ...bundle,
-            bundleFile: `/assets/${bundle.bundleId}.bin`
-        }))
+        assets: historicalAssets,
+        bundles: currentManifest.bundles.map((bundle: any) => {
+            const bundleSha256 = HISTORICAL_SCHEMA_1_2_BUNDLE_HASHES[bundle.bundleId];
+            return {
+                bundleId: bundle.bundleId,
+                bundleFile: `/assets/${bundle.bundleId}.bin`,
+                formatVersion: bundle.formatVersion,
+                assetCount: historicalCounts.get(bundle.bundleId),
+                bundleSha256
+            };
+        })
     };
-    for (const bundle of currentManifest.bundles) {
+    for (const bundle of fixedManifest.bundles) {
         await writeFile(
             path.join(publicAssetsRoot, `${bundle.bundleId}.bin`),
-            await readFile(path.join(REPOSITORY_ROOT, 'public', bundle.bundleFile.slice(1)))
+            await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'bundles', `${bundle.bundleId}.${bundle.bundleSha256}.bin`))
         );
     }
     await writeFile(path.join(publicAssetsRoot, 'asset-manifest.json'), `${JSON.stringify(fixedManifest, null, 2)}\n`);
@@ -267,7 +291,7 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     for (const asset of registry.assets) {
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
         await mkdir(path.dirname(sourcePath), { recursive: true });
-        const source = await readFile(path.join(REPOSITORY_ROOT, 'public', ...asset.logicalPath.split('/')));
+        const source = await readFile(resolveAssetSource(asset.logicalPath, REPOSITORY_ROOT));
         await writeFile(sourcePath, source);
 
         if (asset.logicalPath.startsWith('assets/Ships/')) {
@@ -281,7 +305,7 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
     await mkdir(privatePlanetRoot, { recursive: true });
     await mkdir(publicPlanetRoot, { recursive: true });
     for (const asset of PLANET_ASSETS) {
-        const source = await readFile(path.join(REPOSITORY_ROOT, 'public', ...asset.logicalPath.split('/')));
+        const source = await readFile(resolveAssetSource(asset.logicalPath, REPOSITORY_ROOT));
         await writeFile(path.join(privatePlanetRoot, asset.fileName), source);
         await writeFile(path.join(publicPlanetRoot, asset.fileName), source);
     }
@@ -535,7 +559,7 @@ test('real planet PNGs match the approved fingerprints and bounded RGBA8 non-int
     let aggregateDecodedPixelBytes = 0;
     let aggregateInflatedScanlineBytes = 0;
     for (const asset of PLANET_ASSETS) {
-        const bytes = await readFile(path.join(REPOSITORY_ROOT, 'public', ...asset.logicalPath.split('/')));
+        const bytes = await readFile(resolveAssetSource(asset.logicalPath, REPOSITORY_ROOT));
         assert.equal(hash(bytes), asset.sourceSha256, `Public fingerprint differs: ${asset.logicalPath}`);
         const result = await validatePng(bytes, asset);
         assert.equal(result.width, 2000);
@@ -627,6 +651,66 @@ test('newly discovered planets require explicit approval and register without ch
     });
 });
 
+test('properly named planets and numeric-suffixed variants are approved and packaged dynamically', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        const planetRoot = path.join(projectRoot, 'private', 'assets', 'Planets');
+        await writeFile(
+            path.join(planetRoot, 'Hushanyia.png'),
+            await readFile(path.join(planetRoot, 'Map-111.png'))
+        );
+        await writeFile(
+            path.join(planetRoot, 'Kansansas.png'),
+            await readFile(path.join(planetRoot, 'Map-692.png'))
+        );
+        await writeFile(
+            path.join(planetRoot, 'Map-111-2.png'),
+            await readFile(path.join(planetRoot, 'Map-122.png'))
+        );
+
+        const preview = await approvePlanetAssets({ projectRoot });
+        assert.deepEqual(preview.changes.map((entry) => entry.logicalPath).sort(), [
+            'assets/Planets/Hushanyia.png',
+            'assets/Planets/Kansansas.png',
+            'assets/Planets/Map-111-2.png'
+        ]);
+        await assert.rejects(createAssetPackageOutputs({ projectRoot }), /no approved fingerprint/);
+
+        await approvePlanetAssets({ projectRoot, apply: true });
+        const { manifest, outputFiles } = await createAssetPackageOutputs({ projectRoot });
+        assert.equal(manifest.assets.length, 37);
+        assert.equal(manifest.assets.find((asset: any) => asset.logicalPath === 'assets/Planets/Hushanyia.png')?.assetId,
+            'rt.planet-map.hushanyia');
+        assert.equal(manifest.assets.find((asset: any) => asset.logicalPath === 'assets/Planets/Hushanyia.png')?.textureKey,
+            'planetMapHushanyia');
+        assert.equal(manifest.assets.find((asset: any) => asset.logicalPath === 'assets/Planets/Kansansas.png')?.assetId,
+            'rt.planet-map.kansansas');
+        assert.equal(manifest.assets.find((asset: any) => asset.logicalPath === 'assets/Planets/Kansansas.png')?.textureKey,
+            'planetMapKansansas');
+        assert.equal(manifest.assets.find((asset: any) => asset.logicalPath === 'assets/Planets/Map-111-2.png')?.assetId,
+            'rt.planet-map.map-111-2');
+        assert.equal(manifest.assets.find((asset: any) => asset.logicalPath === 'assets/Planets/Map-111-2.png')?.textureKey,
+            'planetMapMap1112');
+        assert.equal(manifest.bundles.find((bundle: any) => bundle.bundleId === 'planets')?.assetCount, 6);
+        assert.deepEqual(manifest.activePlanetPlacements.map((entry: any) => entry.textureKey), [
+            'planetMap692', 'planetMap122', 'planetMap111'
+        ]);
+        assert.ok([...outputFiles.keys()].some((filePath) => filePath.endsWith('runtimeAssetContract.ts')));
+    });
+});
+
+test('planet approval rejects names that normalize to duplicate runtime identities', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        const planetRoot = path.join(projectRoot, 'private', 'assets', 'Planets');
+        const bytes = await readFile(path.join(planetRoot, 'Map-111.png'));
+        await writeFile(path.join(planetRoot, 'Hushanyia-Nova.png'), bytes);
+        await writeFile(path.join(planetRoot, 'Hushanyia_Nova.png'), bytes);
+        await assert.rejects(
+            approvePlanetAssets({ projectRoot }),
+            /same asset ID|same texture key/
+        );
+    });
+});
+
 test('removing a planet requires explicit approval pruning and active placements still block publication', async () => {
     await createProjectFixture(async (projectRoot) => {
         await rm(path.join(projectRoot, 'private', 'assets', 'Planets', 'Map-111.png'));
@@ -650,7 +734,7 @@ test('Planets directory rejects every unexpected file and nested directory', asy
         await writeFile(unexpectedFile, createPng());
         await assert.rejects(
             createAssetPackageOutputs({ projectRoot }),
-            /Invalid planet filename/
+            /no approved fingerprint/
         );
         await rm(unexpectedFile);
 
@@ -848,6 +932,29 @@ test('lifecycle publishes four mixed-asset bundles, preserves the 31-entry SVG r
         assert.equal(cleanClone.mode, 'validate-only');
         assert.deepEqual(cleanClone.validatedBundles, ['components', 'planets', 'ships', 'turrets-platforms']);
         await assertSnapshotUnchanged(outputs);
+    });
+});
+
+test('schema-1.2 predecessor accepts only its independently pinned bundle fingerprint snapshot', async () => {
+    await createProjectFixture(async (projectRoot) => {
+        const manifestPath = path.join(projectRoot, 'public', 'assets', 'asset-manifest.json');
+        const historical = JSON.parse(await readFile(manifestPath, 'utf8'));
+        assert.equal(historical.manifestSchemaVersion, '1.2');
+        await prepareAssets({ projectRoot });
+        const migrated = JSON.parse(await readFile(manifestPath, 'utf8'));
+        assert.equal(migrated.manifestSchemaVersion, '1.3');
+
+        await createProjectFixture(async (corruptRoot) => {
+            const corruptManifestPath = path.join(corruptRoot, 'public', 'assets', 'asset-manifest.json');
+            const corruptManifest = JSON.parse(await readFile(corruptManifestPath, 'utf8'));
+            const bundle = corruptManifest.bundles.find((entry: any) => entry.bundleId === 'planets');
+            bundle.bundleSha256 = 'a'.repeat(64);
+            await writeFile(corruptManifestPath, `${JSON.stringify(corruptManifest, null, 2)}\n`);
+            await assert.rejects(
+                prepareAssets({ projectRoot: corruptRoot }),
+                /invalid bundle record "planets"/
+            );
+        });
     });
 });
 
@@ -1169,6 +1276,10 @@ test('generated manifest schema 1.3 carries the generation ID and permits SVG an
     assert.deepEqual(schema.required, ['manifestSchemaVersion', 'generationId', 'activePlanetPlacements', 'assets', 'bundles']);
     assert.deepEqual(schema.properties.assets.items.properties.contentType.enum, ['SVG', 'PNG']);
     assert.deepEqual(schema.properties.bundles.items.properties.formatVersion.enum, ['1.0', '1.1']);
+    const placementKeyPattern = new RegExp(schema.properties.activePlanetPlacements.items.properties.textureKey.pattern);
+    assert.match('planetMap111', placementKeyPattern);
+    assert.match('planetMapHushanyia', placementKeyPattern);
+    assert.doesNotMatch('planetMap', placementKeyPattern);
     assert.equal('assetIds' in schema.properties.bundles.items.properties, false);
     assert.equal('textureKeys' in schema.properties.bundles.items.properties, false);
 });

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import saxes from 'saxes';
-import { listSourceAssets } from './asset-roots.mjs';
+import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 
 const PROJECT_NAME = 'Redemptis-Tiariea';
 const HEAD_DIRECTOR = 'Arcyriea (Head Director)';
@@ -68,7 +68,8 @@ export function analyzeSvgMetadata(content) {
         title: null,
         isMalformed: false,
         currentElement: null,
-        inMetadata: false
+        inMetadata: false,
+        rootElement: null
     };
 
     parser.on('error', function () {
@@ -76,6 +77,7 @@ export function analyzeSvgMetadata(content) {
     });
 
     parser.on('opentag', function (node) {
+        if (result.rootElement === null) result.rootElement = node.name;
         result.currentElement = node.name;
         if (node.name === 'metadata') result.inMetadata = true;
 
@@ -101,6 +103,9 @@ export function analyzeSvgMetadata(content) {
     try {
         parser.write(content).close();
     } catch (e) {
+        result.isMalformed = true;
+    }
+    if (!result.rootElement || !/^(?:[A-Za-z_][\w.-]*:)?svg$/.test(result.rootElement)) {
         result.isMalformed = true;
     }
     return result;
@@ -150,42 +155,43 @@ export function insertMetadata(content, metadataBlock) {
     return isValidXml(modified) ? modified : null;
 }
 
-/**
- * Build the canonical inventory of all SVG assets from all source roots.
- * Each entry is { logicalPath, physicalSourcePath }.
- * This inventory includes all 36 SVG files (31 assets/ + 3 minimap + 2 root-level),
- * matching the previous utility's complete coverage.
- */
-export async function buildCanonicalInventory() {
-    var inventory = [];
-    var seen = new Set();
-
-    // Pull in every asset the source-root mapper knows about.
-    // listSourceAssets() already returns 36 entries that comprehensively cover:
-    //   - 31 assets/ SVGs (Components + Ships + Turrets-Platforms)
-    //   - 3 minimap SVGs
-    //   - 2 root-level SVGs (favicon.svg, icons.svg)
-    try {
-        var allSources = await listSourceAssets();
-        for (var j = 0; j < allSources.length; j++) {
-            var ref = allSources[j];
-            var logicalPath = ref.logicalPath;
-            if (seen.has(logicalPath)) {
-                continue;
-            }
-            seen.add(logicalPath);
-            inventory.push({
-                logicalPath: logicalPath,
-                physicalSourcePath: ref.physicalPath
-            });
-        }
-    } catch (e) {
-        // Failure to build the inventory is a fatal condition.
-        console.error('Fatal: could not build canonical SVG inventory: ' + e.message);
-        throw e;
+/** Build an allowlisted inventory of registered SVGs owned by private/assets. */
+export async function buildCanonicalInventory(projectRoot = PROJECT_ROOT) {
+    const registry = await readAssetRegistry(projectRoot);
+    const assets = registry.assets.filter((asset) => asset.contentType === 'SVG');
+    if (assets.length !== 31) {
+        throw new Error(`Expected exactly 31 registered game SVGs, found ${assets.length}`);
     }
-
-    return inventory;
+    const privateRoot = path.resolve(projectRoot, 'private', 'assets');
+    const seenLogicalPaths = new Set();
+    const seenPhysicalPaths = new Set();
+    const inventory = [];
+    for (const asset of assets) {
+        if (seenLogicalPaths.has(asset.logicalPath)) {
+            throw new Error(`Duplicate registered SVG logical path: ${asset.logicalPath}`);
+        }
+        seenLogicalPaths.add(asset.logicalPath);
+        const physicalSourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
+        const relative = path.relative(privateRoot, physicalSourcePath);
+        if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+            throw new Error(`Registered SVG source is outside private/assets: ${asset.logicalPath}`);
+        }
+        if (seenPhysicalPaths.has(physicalSourcePath)) {
+            throw new Error(`Duplicate registered SVG physical source: ${physicalSourcePath}`);
+        }
+        seenPhysicalPaths.add(physicalSourcePath);
+        let info;
+        try {
+            info = fs.lstatSync(physicalSourcePath);
+        } catch (error) {
+            throw new Error(`Missing canonical private SVG source for "${asset.logicalPath}": ${error.message}`);
+        }
+        if (info.isSymbolicLink() || !info.isFile()) {
+            throw new Error(`Canonical private SVG source is not a regular file: ${asset.logicalPath}`);
+        }
+        inventory.push({ logicalPath: asset.logicalPath, physicalSourcePath });
+    }
+    return inventory.sort((left, right) => left.logicalPath < right.logicalPath ? -1 : left.logicalPath > right.logicalPath ? 1 : 0);
 }
 
 function restoreInventory(inventory, backupDir) {
@@ -222,7 +228,7 @@ function restoreInventory(inventory, backupDir) {
  */
 export async function run({
     args = process.argv.slice(2),
-    inventory: suppliedInventory,
+    projectRoot = PROJECT_ROOT,
     backupDir = BACKUP_DIR,
     ownershipFile = OWNERSHIP_FILE
 } = {}) {
@@ -232,13 +238,12 @@ export async function run({
     console.log('Starting SVG Copyright Utility ' + (isDryRun ? '(DRY RUN)' : '') +
         (restoreBackups ? ' (RESTORE MODE)' : '') + '...');
 
-    var inventory = suppliedInventory;
-    if (inventory === undefined) {
-        try {
-            inventory = await buildCanonicalInventory();
-        } catch {
-            return 1;
-        }
+    let inventory;
+    try {
+        inventory = await buildCanonicalInventory(projectRoot);
+    } catch (error) {
+        console.error(`Fatal: could not build the 31-file registered private SVG inventory: ${error.message}`);
+        return 1;
     }
 
     if (inventory.length === 0) {

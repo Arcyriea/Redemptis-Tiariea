@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeDevPrepareMarker } from './dev-prepare-marker.mjs';
 import { createAssetPackageOutputs, validateCommittedAssetOutputs, validateRtabBundle } from './package-assets.mjs';
 import { createPublicSvgManifest, renderPublicSvgManifest } from './generate-public-svg-manifest.mjs';
 import { buildRuntimeContract } from './asset-contract.mjs';
@@ -42,6 +43,14 @@ const HISTORICAL_PLANET_ASSETS = [
 const KNOWN_PREDECESSOR_BUNDLE_HASHES = Object.freeze({
     components: 'c765204592f66b0431a41b7c20a3f4ff58559757883aa39f0a81ad864a1928df',
     planets: 'ef64dfb9a6491965d5b3870918f317f9a5632fb32eeb5c4be812b1f1829dc120',
+    ships: '5a88e030dfbd0cecc8d2b51acf7e80dce2bdb36862838ba0ea113d84707fd65b',
+    'turrets-platforms': '943e47cfed1ff6e28bc4bca70efe0f42c9d1403b8e2a17c24643f8a61c9e126e'
+});
+// Immutable fingerprint snapshot for the exact fixed-path mixed-asset schema-1.2 predecessor.
+// Keep this separate from the schema-1.1 predecessor table above.
+const KNOWN_SCHEMA_1_2_BUNDLE_HASHES = Object.freeze({
+    components: 'c765204592f66b0431a41b7c20a3f4ff58559757883aa39f0a81ad864a1928df',
+    planets: '6d1b1206f74f207f7d8af01ab3a9d0b768d0f9021fe456753f894bb04a411814',
     ships: '5a88e030dfbd0cecc8d2b51acf7e80dce2bdb36862838ba0ea113d84707fd65b',
     'turrets-platforms': '943e47cfed1ff6e28bc4bca70efe0f42c9d1403b8e2a17c24643f8a61c9e126e'
 });
@@ -301,8 +310,7 @@ function validateCurrentMixedManifest(manifest, registry) {
             || bundle.bundleFile !== `/assets/${bundle.bundleId}.bin`
             || bundle.formatVersion !== formatVersion
             || bundle.assetCount !== counts.get(bundle.bundleId)
-            || typeof bundle.bundleSha256 !== 'string'
-            || !/^[a-f0-9]{64}$/.test(bundle.bundleSha256)) {
+            || bundle.bundleSha256 !== KNOWN_SCHEMA_1_2_BUNDLE_HASHES[bundle.bundleId]) {
             throw new Error(`Previous mixed-asset manifest has an invalid bundle record "${bundle.bundleId}"`);
         }
         bundles.set(bundle.bundleId, bundle);
@@ -589,7 +597,12 @@ export async function prepareAssets({ projectRoot = PROJECT_ROOT } = {}) {
 
 const scriptPath = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
-    prepareAssets().catch((error) => {
+    prepareAssets().then(async () => {
+        if (process.argv.includes('--npm-predev')) {
+            const manifest = JSON.parse(await readFile(path.join(PROJECT_ROOT, 'public', 'assets', 'asset-manifest.json'), 'utf8'));
+            await writeDevPrepareMarker(PROJECT_ROOT, manifest.generationId);
+        }
+    }).catch((error) => {
         console.error(`Failed to prepare assets: ${error.message}`);
         process.exitCode = 1;
     });

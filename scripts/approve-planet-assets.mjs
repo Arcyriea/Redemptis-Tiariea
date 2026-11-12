@@ -19,12 +19,22 @@ export async function inspectPlanetApprovals(projectRoot = PROJECT_ROOT) {
     const entries = await readdir(planetsDir, { withFileTypes: true });
     entries.sort((a, b) => a.name.localeCompare(b.name));
     const found = new Map();
+    const assetIds = new Set();
+    const textureKeys = new Set();
     let aggregateFileBytes = 0;
     let aggregateDecodedBytes = 0;
     let aggregateScanlineBytes = 0;
     for (const entry of entries) {
         if (!entry.isFile()) throw new Error(`Planet source entry is not a regular file: ${entry.name}`);
         const identity = derivePlanetIdentity(entry.name);
+        if (assetIds.has(identity.assetId)) {
+            throw new Error(`Planet filenames derive the same asset ID "${identity.assetId}".`);
+        }
+        if (textureKeys.has(identity.textureKey)) {
+            throw new Error(`Planet filenames derive the same texture key "${identity.textureKey}".`);
+        }
+        assetIds.add(identity.assetId);
+        textureKeys.add(identity.textureKey);
         const fullPath = path.join(planetsDir, entry.name);
         const info = await lstat(fullPath);
         if (info.isSymbolicLink() || !info.isFile()) throw new Error(`Planet source is not a regular file: ${fullPath}`);

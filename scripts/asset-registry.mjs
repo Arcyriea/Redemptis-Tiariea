@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ASSET_ROOTS, resolvePhysicalDir } from './asset-roots.mjs';
+import { resolveAssetSourcePath } from './asset-roots.mjs';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REQUIRED_ALIASES = new Map([
@@ -131,21 +131,12 @@ export async function readAssetRegistry(projectRoot = PROJECT_ROOT) {
 }
 
 export function resolveAssetSource(logicalPath, projectRoot = PROJECT_ROOT) {
-    const root = resolvePhysicalDir(logicalPath);
     const contentType = /\.svg$/i.test(logicalPath) ? 'SVG' : /\.png$/i.test(logicalPath) ? 'PNG' : null;
-    if (!root || !contentType || !isSafeLogicalPath(logicalPath, contentType)) {
+    if (!contentType || !isSafeLogicalPath(logicalPath, contentType)) {
         throw new Error(`Could not resolve canonical source for logical asset "${logicalPath}"`);
     }
-
-    const rootRelative = path.relative(PROJECT_ROOT, root.physical);
-    const sourceRoot = path.resolve(projectRoot, rootRelative);
-    const suffix = root.logical
-        ? logicalPath.slice(root.logical.length).replace(/^[/\\]/, '')
-        : logicalPath;
-    const sourcePath = path.resolve(sourceRoot, ...suffix.split('/'));
-    if (!sourcePath.startsWith(`${sourceRoot}${path.sep}`)) {
-        throw new Error(`Logical asset path escapes its canonical source root: "${logicalPath}"`);
-    }
+    const sourcePath = resolveAssetSourcePath(logicalPath, projectRoot);
+    if (!sourcePath) throw new Error(`Logical asset path escapes its canonical source root: "${logicalPath}"`);
     return sourcePath;
 }
 

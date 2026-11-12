@@ -2,8 +2,10 @@
 export const runtimeAssetContract = Object.freeze({
   "runtimeContractSchemaVersion": "1",
   "manifestSchemaVersion": "1.3",
-  "generationId": "4b883c0b0dd8ba678d5138a0a0b443e4a70840f3d0563d34509a098c53c2ee61",
+  "generationId": "f21b3197bd0d9108ee8a51b7ac8aa5c815b587d4a796455f0ee6580f63ae9e3c",
   "approvedPlanetSourceSha256": {
+    "assets/Planets/Hushanyia.png": "e8c4916c95b93909b98723162c30a999605be951454ba38041e3a5cb3d2c9080",
+    "assets/Planets/Kansansas.png": "4919d403f3639cfeecf5387151db5c3fffff2a2f5ee97219a0cc8fd2d0cdc687",
     "assets/Planets/Map-111.png": "83d39b7a7603f574f47cee57c4d9b12b0b468b469fece0ffe7765d921f067ea1",
     "assets/Planets/Map-122.png": "35f8af626f4d7162a2926ef3dad6cdec36610cfd6f3acac86a1547d764081f7e",
     "assets/Planets/Map-692.png": "43652c4465b35a1e3ae4bf99bbb75308359179c9d1b3fd8711d38c806b1472a8"
@@ -198,6 +200,24 @@ export const runtimeAssetContract = Object.freeze({
       "contentType": "SVG",
       "sourceSha256": "01dc4c33b840e6263f74a23aec806107c745a00b6be2dabbeda32dc9c434d422",
       "bundleId": "components"
+    },
+    {
+      "assetId": "rt.planet-map.hushanyia",
+      "logicalPath": "assets/Planets/Hushanyia.png",
+      "textureKey": "planetMapHushanyia",
+      "aliases": [],
+      "contentType": "PNG",
+      "sourceSha256": "e8c4916c95b93909b98723162c30a999605be951454ba38041e3a5cb3d2c9080",
+      "bundleId": "planets"
+    },
+    {
+      "assetId": "rt.planet-map.kansansas",
+      "logicalPath": "assets/Planets/Kansansas.png",
+      "textureKey": "planetMapKansansas",
+      "aliases": [],
+      "contentType": "PNG",
+      "sourceSha256": "4919d403f3639cfeecf5387151db5c3fffff2a2f5ee97219a0cc8fd2d0cdc687",
+      "bundleId": "planets"
     },
     {
       "assetId": "rt.planet-map.map-111",

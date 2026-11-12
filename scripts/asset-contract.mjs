@@ -11,18 +11,32 @@ import {
 
 export { MANIFEST_SCHEMA_VERSION, RUNTIME_CONTRACT_SCHEMA_VERSION };
 
-export const PLANET_FILENAME_PATTERN = /^Map-([1-9][0-9]*)\.png$/;
+// Legacy numeric names retain their established identities. Other planet names
+// use a stable ASCII slug and a PascalCase Phaser texture key.
+export const PLANET_FILENAME_PATTERN = /^(?:Map-([1-9][0-9]*)|([A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*))\.png$/;
+export const PLANET_TEXTURE_KEY_PATTERN = /^planetMap(?:[1-9][0-9]*|[A-Z][A-Za-z0-9]*)$/;
+
+function planetSlug(name) {
+    return name.toLowerCase().replaceAll('_', '-');
+}
+
+function namedPlanetTextureKey(slug) {
+    const suffix = slug.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('');
+    return `planetMap${suffix}`;
+}
 
 export function derivePlanetIdentity(fileName) {
     const match = PLANET_FILENAME_PATTERN.exec(fileName);
     if (!match) {
-        throw new Error(`Invalid planet filename "${fileName}"; expected Map-<positive integer>.png with exact casing`);
+        throw new Error(`Invalid planet filename "${fileName}"; expected Map-<positive integer>.png or <PlanetName>.png using ASCII letters, digits, hyphens, or underscores`);
     }
     const number = match[1];
+    const name = match[2];
+    const slug = number ? `map-${number}` : planetSlug(name);
     return {
-        assetId: `rt.planet-map.map-${number}`,
+        assetId: `rt.planet-map.${slug}`,
         logicalPath: `assets/Planets/${fileName}`,
-        textureKey: `planetMap${number}`,
+        textureKey: number ? `planetMap${number}` : namedPlanetTextureKey(slug),
         aliases: [],
         contentType: 'PNG',
         bundleId: 'planets'
@@ -37,11 +51,22 @@ export async function readPlanetApprovals(projectRoot) {
         throw new Error('Planet approval file must contain approvalSchemaVersion "1" and an approvals object');
     }
     const approvals = new Map();
+    const assetIds = new Set();
+    const textureKeys = new Set();
     for (const [logicalPath, hash] of Object.entries(value.approvals)) {
-        if (!/^assets\/Planets\/Map-[1-9][0-9]*\.png$/.test(logicalPath)
-            || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash)) {
+        const fileName = path.posix.basename(logicalPath);
+        let identity;
+        try {
+            identity = derivePlanetIdentity(fileName);
+        } catch {
             throw new Error(`Invalid planet approval record for "${logicalPath}"`);
         }
+        if (identity.logicalPath !== logicalPath || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash)
+            || assetIds.has(identity.assetId) || textureKeys.has(identity.textureKey)) {
+            throw new Error(`Invalid planet approval record for "${logicalPath}"`);
+        }
+        assetIds.add(identity.assetId);
+        textureKeys.add(identity.textureKey);
         approvals.set(logicalPath, hash);
     }
     return approvals;
@@ -57,7 +82,7 @@ export async function readPlanetPlacements(projectRoot) {
     const placements = Object.entries(value.placements).map(([slot, entry]) => {
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(slot) || !entry
             || !Number.isSafeInteger(entry.order) || entry.order < 1
-            || typeof entry.textureKey !== 'string' || !/^planetMap[1-9][0-9]*$/.test(entry.textureKey)) {
+            || typeof entry.textureKey !== 'string' || !PLANET_TEXTURE_KEY_PATTERN.test(entry.textureKey)) {
             throw new Error(`Invalid named planet placement "${slot}"`);
         }
         return { slot, order: entry.order, textureKey: entry.textureKey };
