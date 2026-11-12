@@ -251,6 +251,8 @@ This division allows tactical coordination, individual entity behavior, weapon o
 
 Weapon content authoring is separate from weapon runtime behavior. Future Lua weapon definitions should be parsed and validated into typed runtime definitions, then registered before runtime use. A content compiler or loader and a behavior registry are separate responsibilities. If `WeaponManager` is implemented, it should not parse arbitrary Lua scripts or own every specialized weapon implementation. This proposal does not require a new manager solely for the Lua pipeline. See [Weapon Content and Behavior Architecture](docs/WEAPON-CONTENT-AND-BEHAVIOR-ARCHITECTURE.md) for boundaries, proposed flow, and current status.
 
+The Shipmaker editor (documented in [SHIPMAKER-ARCHITECTURE-HANDOFF.md](docs/SHIPMAKER-ARCHITECTURE-HANDOFF.md)) will author weapon and module definitions as Lua data files under `public/data/weapons/` and `public/data/modules/`. The TypeScript loading infrastructure in `src/` will parse, validate, and register these definitions with the existing `Game.componentDefinitions` registry. Weapon behavior implementations remain registered TypeScript functionality; Lua files describe static configuration and reference stable behavior IDs.
+
 ---
 
 ## 4. Spatial Management and Navigation
@@ -488,3 +490,15 @@ The proposed structure establishes:
 The architecture is intended to evolve as the game develops. Individual managers and systems should be specified, implemented, and validated when their respective gameplay requirements become concrete.
 
 **The objective is to establish a maintainable foundation for expanding Redemptis-Tiariea without prematurely committing to unnecessary complexity.**
+
+---
+
+## 10. Cross-References to Shipmaker Architecture
+
+The Shipmaker editor architecture is documented in [SHIPMAKER-ARCHITECTURE-HANDOFF.md](docs/SHIPMAKER-ARCHITECTURE-HANDOFF.md). Key integration points:
+
+- **Game registries**: The `Game` class owns canonical typed registries (`hullDefinitions`, `componentDefinitions`, `shipLoadouts`) that Shipmaker will populate from Lua source files under `public/data/`.
+- **Component definitions**: Weapon and module definitions authored in Shipmaker become `ComponentDefinition` entries in `Game.componentDefinitions`, preserving the distinction between static Lua configuration and TypeScript behavior implementations (see [WEAPON-CONTENT-AND-BEHAVIOR-ARCHITECTURE.md](docs/WEAPON-CONTENT-AND-BEHAVIOR-ARCHITECTURE.md)).
+- **ShipManager**: Remains the ship catalogue and creation owner; it resolves blueprint `hullId` and `loadoutId` through `Game` registries.
+- **WeaponManager**: If implemented, should consume validated component definitions from `Game.componentDefinitions` rather than parsing Lua directly. The Lua parsing/validation pipeline lives in `src/` infrastructure, not in a manager.
+- **No parallel registries**: Shipmaker's Save & Apply workflow writes Lua source files; the TypeScript loading infrastructure reads, validates, and registers them. No duplicate registries are introduced.

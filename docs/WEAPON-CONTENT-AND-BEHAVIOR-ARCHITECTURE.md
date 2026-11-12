@@ -73,14 +73,13 @@ The TypeScript behavior interprets this table through its own validated configur
 
 Custom behaviors should cooperate with shared gameplay infrastructure rather than independently duplicating its common responsibilities:
 
-- Weapon readiness and cooldown.
-- Energy consumption.
+- Weapon readiness, cooldown progression, energy checks, and energy deduction. These are currently owned by `Component`.
 - Shared weapon transform calculations.
 - Projectile ownership and pooling.
 - Source attribution and faction information.
 - Projectile lifecycle and cleanup.
 
-The existing `WeaponTransform` is the reusable muzzle-transform utility. `ProjectileManager` owns the managed projectile lifecycle, including spawning, pooling, attribution, collision/damage coordination, and cleanup. Future behaviors should use these existing responsibilities where appropriate. The final behavior interface and activation lifecycle hooks remain to be designed.
+The existing `Component` activation path performs readiness, cooldown, and energy handling before and after the weapon effect is activated. Future TypeScript behaviors should use that shared path rather than introducing competing cooldown or energy systems. `WeaponTransform` is the reusable muzzle-transform utility. `ProjectileManager` owns the managed projectile lifecycle, including spawning, pooling, attribution, collision/damage coordination, and cleanup. Future behaviors should use these existing responsibilities where appropriate. The final behavior interface and activation lifecycle hooks remain to be designed.
 
 ## Faction Arsenals
 
