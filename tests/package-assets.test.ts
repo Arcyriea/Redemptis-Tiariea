@@ -252,42 +252,6 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
 
     const publicAssetsRoot = path.join(projectRoot, 'public', 'assets');
     await mkdir(publicAssetsRoot, { recursive: true });
-    const currentManifest = JSON.parse(await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'asset-manifest.json'), 'utf8'));
-    const historicalAssetIds = new Set([
-        ...registry.assets.map((asset) => asset.assetId),
-        ...PLANET_ASSETS.map((asset) => asset.assetId)
-    ]);
-    const historicalAssets = currentManifest.assets.filter((asset: any) => historicalAssetIds.has(asset.assetId));
-    const historicalCounts = new Map<string, number>();
-    for (const asset of historicalAssets) {
-        historicalCounts.set(asset.bundleId, (historicalCounts.get(asset.bundleId) ?? 0) + 1);
-    }
-    const fixedManifest = {
-        manifestSchemaVersion: '1.2',
-        assets: historicalAssets,
-        bundles: currentManifest.bundles.map((bundle: any) => {
-            const bundleSha256 = HISTORICAL_SCHEMA_1_2_BUNDLE_HASHES[bundle.bundleId];
-            return {
-                bundleId: bundle.bundleId,
-                bundleFile: `/assets/${bundle.bundleId}.bin`,
-                formatVersion: bundle.formatVersion,
-                assetCount: historicalCounts.get(bundle.bundleId),
-                bundleSha256
-            };
-        })
-    };
-    for (const bundle of fixedManifest.bundles) {
-        await writeFile(
-            path.join(publicAssetsRoot, `${bundle.bundleId}.bin`),
-            await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'bundles', `${bundle.bundleId}.${bundle.bundleSha256}.bin`))
-        );
-    }
-    await writeFile(path.join(publicAssetsRoot, 'asset-manifest.json'), `${JSON.stringify(fixedManifest, null, 2)}\n`);
-    await writeFile(
-        path.join(publicAssetsRoot, 'asset-manifest-schema.json'),
-        await readFile(path.join(REPOSITORY_ROOT, 'public', 'assets', 'asset-manifest-schema.json'))
-    );
-
     for (const asset of registry.assets) {
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
         await mkdir(path.dirname(sourcePath), { recursive: true });
@@ -309,6 +273,30 @@ async function createProjectFixture(run: (projectRoot: string, registry: Registr
         await writeFile(path.join(privatePlanetRoot, asset.fileName), source);
         await writeFile(path.join(publicPlanetRoot, asset.fileName), source);
     }
+
+    // Build the fixed-path schema-1.2 predecessor fixture from canonical inputs.
+    // This keeps the immutable historical test meaningful after old bundle files are pruned.
+    const generated = await createAssetPackageOutputs({ projectRoot });
+    assert.equal(generated.manifest.assets.length, 34);
+    const fixedManifest = {
+        manifestSchemaVersion: '1.2',
+        assets: generated.manifest.assets,
+        bundles: generated.manifest.bundles.map((bundle: any) => {
+            assert.equal(bundle.bundleSha256, HISTORICAL_SCHEMA_1_2_BUNDLE_HASHES[bundle.bundleId]);
+            return { ...bundle, bundleFile: `/assets/${bundle.bundleId}.bin` };
+        })
+    };
+    for (const bundle of generated.manifest.bundles) {
+        const addressedPath = path.join(projectRoot, 'public', bundle.bundleFile.slice(1));
+        const bytes = generated.outputFiles.get(addressedPath);
+        assert.ok(bytes, `Missing generated historical fixture bytes for ${bundle.bundleId}.`);
+        await writeFile(path.join(publicAssetsRoot, `${bundle.bundleId}.bin`), bytes);
+    }
+    await writeFile(path.join(publicAssetsRoot, 'asset-manifest.json'), `${JSON.stringify(fixedManifest, null, 2)}\n`);
+    await writeFile(
+        path.join(publicAssetsRoot, 'asset-manifest-schema.json'),
+        generated.outputFiles.get(path.join(projectRoot, 'public', 'assets', 'asset-manifest-schema.json')) as string
+    );
 
     try {
         await run(projectRoot, registry);

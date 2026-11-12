@@ -8,7 +8,6 @@ import { migratePlanetAssetsPrivate } from '../scripts/migrate-planet-assets-pri
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..');
 const PLANET_FILES = ['Map-111.png', 'Map-122.png', 'Map-692.png'];
-const DEFERRED_FILES = ['Map-111-2.png', 'Map-122-2.png'];
 
 function hash(bytes: Buffer) {
     return createHash('sha256').update(bytes).digest('hex');
@@ -29,11 +28,10 @@ async function createFixture(run: (projectRoot: string) => Promise<void>) {
     await writeFile(path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'), `${JSON.stringify({
         approvalSchemaVersion: '1', approvals
     }, null, 2)}\n`);
-    for (const filename of [...PLANET_FILES, ...DEFERRED_FILES]) {
-        const sourceName = PLANET_FILES.includes(filename) ? filename : 'Map-111.png';
+    for (const filename of PLANET_FILES) {
         await writeFile(
             path.join(projectRoot, 'public', 'assets', 'Planets', filename),
-            await readFile(path.join(REPOSITORY_ROOT, 'private', 'assets', 'Planets', sourceName))
+            await readFile(path.join(REPOSITORY_ROOT, 'private', 'assets', 'Planets', filename))
         );
     }
 
@@ -52,17 +50,10 @@ test('dry-run inventories only the three approved planet PNGs without copying', 
         assert.equal(report.existingPrivateCount, 0);
         assert.equal(report.filesToCopy, 3);
         assert.equal((await readdir(path.join(projectRoot, 'private', 'assets'))).includes('Planets'), false);
-        for (const filename of DEFERRED_FILES) {
-            assert.equal(
-                await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', filename))
-                    .then((bytes) => bytes.length > 0),
-                true
-            );
-        }
     });
 });
 
-test('migration copies exact hashes, keeps deferred PNGs public-only, and retries idempotently', async () => {
+test('migration copies only the three legacy numeric maps and retries idempotently', async () => {
     await createFixture(async (projectRoot) => {
         const sourceHashes = new Map<string, string>();
         for (const filename of PLANET_FILES) {
@@ -79,17 +70,6 @@ test('migration copies exact hashes, keeps deferred PNGs public-only, and retrie
             assert.equal(
                 hash(await readFile(path.join(projectRoot, 'private', 'assets', 'Planets', filename))),
                 sourceHashes.get(filename)
-            );
-        }
-        for (const filename of DEFERRED_FILES) {
-            assert.equal(
-                await readFile(path.join(projectRoot, 'private', 'assets', 'Planets', filename))
-                    .then(() => true, (error) => error.code !== 'ENOENT'),
-                false
-            );
-            assert.equal(
-                (await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', filename))).length > 0,
-                true
             );
         }
     });
@@ -119,7 +99,7 @@ test('planet approval mismatch aborts before changing public sources or existing
         const userOwnedBytes = Buffer.from('preserve existing user-owned destination');
         await writeFile(existingDestination, userOwnedBytes);
         const publicBefore = new Map(
-            await Promise.all([...PLANET_FILES, ...DEFERRED_FILES].map(async (filename) => [
+            await Promise.all(PLANET_FILES.map(async (filename) => [
                 filename,
                 await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', filename))
             ] as const))

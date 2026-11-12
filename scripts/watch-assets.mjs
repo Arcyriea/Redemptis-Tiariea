@@ -72,6 +72,7 @@ export function createAssetWatcherPlugin({
     }
 
     const resolvedProjectRoot = path.resolve(projectRoot);
+    const canConsumeDevPrepareMarker = prepare === prepareAssets;
     let activePreparation = null;
     let debounceTimer = null;
     let dirty = false;
@@ -238,7 +239,7 @@ export function createAssetWatcherPlugin({
             dirty = false;
 
             try {
-                const prepared = await consumePreparedStartup();
+                const prepared = canConsumeDevPrepareMarker && await consumePreparedStartup();
                 if (prepared) serverLogger?.info('Using the successful npm predev reconciliation; skipped duplicate publication.');
                 else await reconcile(true);
             } catch (error) {

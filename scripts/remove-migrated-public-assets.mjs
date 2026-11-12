@@ -13,8 +13,6 @@ const CATEGORIES = new Map([
     ['turrets-platforms', 'Turrets-Platforms'],
     ['planets', 'Planets']
 ]);
-const EXCLUDED_PUBLIC_FILES = new Set(['Map-111-2.png', 'Map-122-2.png']);
-
 function digest(bytes) {
     return createHash('sha256').update(bytes).digest('hex');
 }
@@ -156,9 +154,6 @@ export async function removeVerifiedPublicDuplicates({
     const removed = [];
     for (const entry of plan) {
         if (entry.alreadyAbsent) continue;
-        if (EXCLUDED_PUBLIC_FILES.has(path.basename(entry.publicPath))) {
-            throw new Error(`Refusing to remove explicitly excluded asset ${entry.publicPath}.`);
-        }
         await unlink(entry.publicPath);
         removed.push(entry.publicPath);
     }

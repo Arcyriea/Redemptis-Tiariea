@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,6 +7,7 @@ import { test } from 'node:test';
 import { removeVerifiedPublicDuplicates } from '../scripts/remove-migrated-public-assets.mjs';
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..');
+const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 async function createFixture(run: (projectRoot: string) => Promise<void>) {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'asset-removal-'));
@@ -78,22 +80,73 @@ test('refuses the whole category before deletion when one public hash differs', 
     });
 });
 
-test('planet removal preserves the separate Map-111-2 and Map-122-2 public files', async () => {
+test('planet removal deletes only the five approved duplicates and preserves unrelated public files', async () => {
     await createFixture(async (projectRoot) => {
         const planetRoot = path.join(projectRoot, 'public', 'assets', 'Planets');
-        await mkdir(planetRoot, { recursive: true });
-        for (const [variant, source] of [['Map-111-2.png', 'Map-111.png'], ['Map-122-2.png', 'Map-122.png']]) {
-            await cp(
-                path.join(projectRoot, 'private', 'assets', 'Planets', source),
-                path.join(planetRoot, variant)
-            );
+        const unrelated = path.join(planetRoot, 'unrelated-public-note.txt');
+        await writeFile(unrelated, 'keep this unrelated public file');
+        const manifest = JSON.parse(await readFile(path.join(projectRoot, 'public', 'assets', 'asset-manifest.json'), 'utf8'));
+        const approvals = JSON.parse(await readFile(path.join(projectRoot, 'scripts', 'planet-asset-approvals.json'), 'utf8'));
+        const planets = manifest.assets.filter((asset: any) => asset.contentType === 'PNG');
+        assert.deepEqual(planets.map((asset: any) => asset.logicalPath.split('/').at(-1)).sort(), [
+            'Hushanyia.png', 'Kansansas.png', 'Map-111.png', 'Map-122.png', 'Map-692.png'
+        ]);
+        assert.equal(planets.length, 5);
+        for (const asset of planets) {
+            const privatePath = path.join(projectRoot, 'private', ...asset.logicalPath.split('/'));
+            const publicPath = path.join(projectRoot, 'public', ...asset.logicalPath.split('/'));
+            const sourceHash = hash(await readFile(privatePath));
+            assert.equal(sourceHash, approvals.approvals[asset.logicalPath]);
+            assert.equal(sourceHash, asset.sourceSha256);
+            assert.equal(hash(await readFile(publicPath)), sourceHash);
         }
         const result = await removeVerifiedPublicDuplicates({ projectRoot, category: 'planets', apply: true });
         assert.equal(result.removed.length, 5);
-        await assert.rejects(readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Map-111.png')));
-        await assert.rejects(readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Map-122.png')));
-        await assert.rejects(readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Map-692.png')));
-        await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Map-111-2.png'));
-        await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Map-122-2.png'));
+        for (const asset of planets) {
+            await assert.rejects(readFile(path.join(projectRoot, 'public', ...asset.logicalPath.split('/'))));
+            await readFile(path.join(projectRoot, 'private', ...asset.logicalPath.split('/')));
+        }
+        assert.equal(await readFile(unrelated, 'utf8'), 'keep this unrelated public file');
+    });
+});
+
+test('planet removal refuses the category when one approved private source is missing', async () => {
+    await createFixture(async (projectRoot) => {
+        const source = path.join(projectRoot, 'private', 'assets', 'Planets', 'Hushanyia.png');
+        const publicCopy = path.join(projectRoot, 'public', 'assets', 'Planets', 'Hushanyia.png');
+        await rm(source);
+        await assert.rejects(
+            removeVerifiedPublicDuplicates({ projectRoot, category: 'planets', apply: true }),
+            /Canonical private source is missing/
+        );
+        await readFile(publicCopy);
+        await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Map-111.png'));
+    });
+});
+
+test('planet removal refuses the category when a canonical planet source hash differs', async () => {
+    await createFixture(async (projectRoot) => {
+        const source = path.join(projectRoot, 'private', 'assets', 'Planets', 'Kansansas.png');
+        const bytes = await readFile(source);
+        bytes[bytes.length - 1] ^= 0xff;
+        await writeFile(source, bytes);
+        await assert.rejects(
+            removeVerifiedPublicDuplicates({ projectRoot, category: 'planets', apply: true }),
+            /Canonical private source fingerprint differs from the committed manifest/
+        );
+        await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Hushanyia.png'));
+    });
+});
+
+test('planet removal refuses a modified public copy without deleting any category files', async () => {
+    await createFixture(async (projectRoot) => {
+        const changed = path.join(projectRoot, 'public', 'assets', 'Planets', 'Hushanyia.png');
+        await writeFile(changed, 'different public image');
+        await assert.rejects(
+            removeVerifiedPublicDuplicates({ projectRoot, category: 'planets', apply: true }),
+            /Public and canonical source hashes differ/
+        );
+        await readFile(changed);
+        await readFile(path.join(projectRoot, 'public', 'assets', 'Planets', 'Kansansas.png'));
     });
 });
