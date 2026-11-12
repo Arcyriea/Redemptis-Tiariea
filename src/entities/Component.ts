@@ -4,7 +4,12 @@ import { Weapon } from '../weapons/Weapon';
 import { ManagedWeapon } from '../weapons/ManagedWeapon';
 import { Ability } from '../abilities/Ability';
 import { ActiveModuleRuntime } from '../abilities/ActiveModuleRuntime';
-import type { ComponentDefinition, LegacyComponentDef, LegacyComponentTuple } from '../types/Shipmaker';
+import type {
+    ComponentDefinition,
+    LegacyComponentDef,
+    LegacyComponentTuple,
+    SpinalWeaponDefinition
+} from '../types/Shipmaker';
 
 /**
  * Component class - Represents modular modules equipped to ship parts.
@@ -32,6 +37,7 @@ export class Component {
     public turretAngleDeg: number = 0;
     public installationSource: 'loadout' | 'built-in' | 'legacy' = 'legacy';
     public fixed: boolean = false;
+    public spinalWeaponDefinition: SpinalWeaponDefinition | null = null;
     private cooldownElapsedMs: number = 0;
     private activationPending: boolean = false;
 
@@ -82,6 +88,7 @@ export class Component {
         this.turretAngleDeg = 0;
         this.installationSource = 'legacy';
         this.fixed = false;
+        this.spinalWeaponDefinition = null;
         this.effect = null;
         this.ability = null;
         this.activeModuleRuntime = null;
@@ -113,6 +120,9 @@ export class Component {
         this.name = def.id;
         this.cooldown = def.operation.cooldown;
         this.energyCost = def.operation.energyCost;
+        if (def.kind === 'weapon' && def.configuration === 'spinal') {
+            this.spinalWeaponDefinition = def;
+        }
 
         switch (def.kind) {
             case 'weapon':
@@ -315,6 +325,7 @@ export class Component {
      */
     reset() {
         this.activeModuleRuntime?.reset();
+        this.spinalWeaponDefinition = null;
         this.componentReady = true;
         this.counter = 0;
         this.cooldownElapsedMs = 0;

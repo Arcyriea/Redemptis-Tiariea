@@ -1,6 +1,13 @@
 import { Game } from '../core/Game';
 import type { Component } from '../entities/Component';
 import type { ComponentDefinition } from '../types/Shipmaker';
+import type { ProjectileConfig } from '../physics/PhysicsProjectile';
+import {
+    degreesToRadians,
+    resolveWeaponMuzzles,
+    velocityFromMuzzle,
+    type ResolvedWeaponMuzzle
+} from './WeaponTransform';
 
 export class Weapon {
     public game: Game;
@@ -105,41 +112,67 @@ export class Weapon {
         // Projectile spawning is handled by the scene-specific fire paths.
     }
 
+    protected resolveMuzzles(ship: any, part: any): readonly ResolvedWeaponMuzzle[] {
+        const definition = this.component?.spinalWeaponDefinition;
+        return resolveWeaponMuzzles({
+            ship: { x: ship.x, y: ship.y, rotationDeg: ship.rotation },
+            mount: {
+                position: { x: part.x, y: part.y },
+                // Legacy part rotation has historically not affected firing direction.
+                rotationDeg: definition ? part.rotation ?? 0 : 0
+            },
+            attachment: definition
+                ? {
+                    position: definition.attachment.position,
+                    rotationDeg: definition.attachment.attachmentRotationDeg
+                }
+                : { position: { x: 0, y: 0 }, rotationDeg: 0 },
+            muzzles: definition?.geometry.muzzles ?? []
+        });
+    }
+
+    protected async loadPhysicsProjectileConstructor(): Promise<
+        typeof import('../physics/PhysicsProjectile').PhysicsProjectile
+    > {
+        const { PhysicsProjectile } = await import('../physics/PhysicsProjectile');
+        return PhysicsProjectile;
+    }
+
     async fireArcadeProjectile(ship: any, part: any, _target: any): Promise<boolean> {
         const scene = ship.phaserScene;
         if (!scene) return false;
 
-        const rad = ship.rotation * (Math.PI / 180);
-        const spawnX = ship.x + Math.cos(rad) * part.x - Math.sin(rad) * part.y;
-        const spawnY = ship.y + Math.sin(rad) * part.x + Math.cos(rad) * part.y;
-
+        const muzzles = this.resolveMuzzles(ship, part);
         const body = ship.phaserBody as any;
         const shooterVelocityX = body?.velocity?.x ?? 0;
         const shooterVelocityY = body?.velocity?.y ?? 0;
-
-        const { PhysicsProjectile } = await import('../physics/PhysicsProjectile');
+        const PhysicsProjectile = await this.loadPhysicsProjectileConstructor();
         if (ship.phaserScene !== scene) return false;
 
-        const projectile = new PhysicsProjectile({
-            scene,
-            x: spawnX,
-            y: spawnY,
-            texture: 'bullet',
-            shooterVelocityX,
-            shooterVelocityY,
-            angle: rad,
-            muzzleVelocity: this.projectileSpeed,
-            damage: this.damage,
-            drag: 10,
-            lifespanMs: 2000
-        });
-
-        scene.playerProjectiles?.add(projectile);
-        projectile.setVelocity(
-            Math.cos(rad) * this.projectileSpeed + shooterVelocityX,
-            Math.sin(rad) * this.projectileSpeed + shooterVelocityY
-        );
-        projectile.setDrag(10);
+        for (const muzzle of muzzles) {
+            const angle = degreesToRadians(muzzle.directionDeg);
+            const projectileConfig: ProjectileConfig = {
+                scene,
+                x: muzzle.x,
+                y: muzzle.y,
+                texture: 'bullet',
+                shooterVelocityX,
+                shooterVelocityY,
+                angle,
+                muzzleVelocity: this.projectileSpeed,
+                damage: this.damage,
+                drag: 10,
+                lifespanMs: 2000
+            };
+            const projectile = new PhysicsProjectile(projectileConfig);
+            scene.playerProjectiles?.add(projectile);
+            const velocity = velocityFromMuzzle(angle, this.projectileSpeed, {
+                x: shooterVelocityX,
+                y: shooterVelocityY
+            });
+            projectile.setVelocity(velocity.x, velocity.y);
+            projectile.setDrag(10);
+        }
         return true;
     }
 }

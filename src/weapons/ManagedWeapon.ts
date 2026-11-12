@@ -1,5 +1,6 @@
 import { Weapon } from './Weapon';
 import { ProjectileManager } from '../managers/ProjectileManager';
+import { degreesToRadians } from './WeaponTransform';
 
 /**
  * ManagedWeapon wraps Weapon to delegate projectile spawning to ProjectileManager.
@@ -19,13 +20,6 @@ export class ManagedWeapon extends Weapon {
         const scene = ship.phaserScene;
         if (!scene) return false;
 
-        // Ship.rotation is in degrees; convert to radians
-        const rad = ship.rotation * (Math.PI / 180);
-
-        // Calculate spawn position from part offset (same math as Weapon.fireProjectile)
-        const spawnX = ship.x + Math.cos(rad) * part.x - Math.sin(rad) * part.y;
-        const spawnY = ship.y + Math.sin(rad) * part.x + Math.cos(rad) * part.y;
-
         // Get shooter velocity from Phaser body for velocity inheritance
         const body = ship.phaserBody as Phaser.Physics.Arcade.Body;
         const shooterVelocityX = body?.velocity?.x ?? 0;
@@ -35,19 +29,21 @@ export class ManagedWeapon extends Weapon {
         const sourceEntityId = ship.id ?? null;
         const sourceFactionId = this.game.factionManager.getFaction(ship) ?? null;
 
-        await this.projectileManager.spawn({
-            x: spawnX,
-            y: spawnY,
-            angle: rad,
-            muzzleVelocity: this.projectileSpeed,
-            shooterVelocityX,
-            shooterVelocityY,
-            damage: this.damage,
-            drag: 10,
-            lifespanMs: 2000,
-            texture: 'bullet',
-            attribution: { sourceEntityId, sourceFactionId }
-        });
+        for (const muzzle of this.resolveMuzzles(ship, part)) {
+            await this.projectileManager.spawn({
+                x: muzzle.x,
+                y: muzzle.y,
+                angle: degreesToRadians(muzzle.directionDeg),
+                muzzleVelocity: this.projectileSpeed,
+                shooterVelocityX,
+                shooterVelocityY,
+                damage: this.damage,
+                drag: 10,
+                lifespanMs: 2000,
+                texture: 'bullet',
+                attribution: { sourceEntityId, sourceFactionId }
+            });
+        }
         return true;
     }
 }
