@@ -134,20 +134,29 @@ Player control settings are separate from weapon behavior IDs. Future control co
 
 ## Proposed Content Organization
 
-One conceptual Lua layout is:
+The authoritative Lua source location is `public/data/` (see [SHIPMAKER-ARCHITECTURE-HANDOFF.md](SHIPMAKER-ARCHITECTURE-HANDOFF.md#lua-source-location-and-data-loading-architecture)). One conceptual Lua layout under that root:
 
 ```text
-data/
+public/data/
 ├── weapons/
 │   ├── common/
 │   ├── human/
 │   └── alien/
+├── modules/
+│   ├── propulsion/
+│   ├── utility/
+│   └── active-modules/
+├── hulls/
+├── ships/
+├── loadouts/
 └── factions/
     ├── human/
     │   └── arsenal.lua
     └── alien/
         └── arsenal.lua
 ```
+
+The `data/` structure previously shown was illustrative only. The actual authoritative location is `public/data/` with separate domains for weapons, modules, hulls, ships, and loadouts. Faction arsenals reference weapon/module IDs rather than duplicating definitions.
 
 One conceptual TypeScript layout is:
 

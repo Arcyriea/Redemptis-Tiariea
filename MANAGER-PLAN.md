@@ -253,6 +253,8 @@ Weapon content authoring is separate from weapon runtime behavior. Future Lua we
 
 The Shipmaker editor (documented in [SHIPMAKER-ARCHITECTURE-HANDOFF.md](docs/SHIPMAKER-ARCHITECTURE-HANDOFF.md)) will author weapon and module definitions as Lua data files under `public/data/weapons/` and `public/data/modules/`. The TypeScript loading infrastructure in `src/` will parse, validate, and register these definitions with the existing `Game.componentDefinitions` registry. Weapon behavior implementations remain registered TypeScript functionality; Lua files describe static configuration and reference stable behavior IDs.
 
+**Note on production Lua distribution:** Vite copies `public/` to production output by default. The unresolved decision (documented in SHIPMAKER-ARCHITECTURE-HANDOFF.md) is whether to (a) ship Lua source in production, (b) configure a custom build strategy to omit `public/data/` while retaining other public assets (Vite's `build.copyPublicDir: false` disables the entire public directory; it cannot selectively exclude a subdirectory), or (c) move authoritative source outside `public/` and expose it only via dev server. This decision affects the dev server design and build pipeline but not the TypeScript loading infrastructure, which reads via HTTP in dev and from generated modules in production.
+
 ---
 
 ## 4. Spatial Management and Navigation

@@ -685,12 +685,50 @@ The documentation should explain why `public/data/` is preferred for the authori
 - The data remains separate from TypeScript gameplay implementation.
 However, do not assume that Phaser can execute or interpret Lua files natively.
 
+### Important: Production Distribution of Lua Source
+
+Vite normally copies the entire `public/` directory into the production output unchanged. This has implications that must be resolved before production deployment:
+
+**Unresolved Decision — Three Alternatives:**
+
+| Alternative | Description | Implications |
+|---|---|---|
+| **Include Lua source in production** | Ship `public/data/` as-is to production. | Simple; Lua files publicly downloadable and inspectable. Source contents may reveal ship statistics, weapon balance values, and unreleased game content — not merely the authoring structure. No runtime execution risk since the browser does not execute Lua. |
+| **Exclude Lua source from production** | Configure a custom build strategy to omit `public/data/` while retaining other public assets (e.g., a Vite plugin that filters the public directory copy, or a post-build cleanup step). Vite's `build.copyPublicDir: false` disables copying the entire public directory; it cannot selectively exclude a subdirectory. | Cleaner production bundle; requires custom build config. Source remains only in repo. |
+| **Move authoritative source outside `public/`** | Keep authoritative Lua under e.g. `data/` (repo root) and expose via dev server endpoint only. | Cleanest separation; dev server reads/writes `data/`; production build reads `data/` at build time, never ships source. Requires dev server middleware and build script changes. |
+
+**Do not unilaterally change the proposed source location.** Record the alternatives and their implications here. The decision affects dev server design, build pipeline, and whether production clients can fetch Lua over HTTP.
+
+### Browser and Node Responsibilities
+
+The division of labor between browser and Node environments must be explicit. **Use a single shared Lua parser and validation core** wherever technically possible; separate only the I/O layer.
+
+| Responsibility | Environment | Notes |
+|---|---|---|
+| **Lua parsing, schema validation, typed runtime conversion** | **Browser-safe TypeScript** (bundled into Phaser runtime) | Must not use Node APIs (`fs`, `path`, etc.). Runs in browser during development to load definitions from HTTP responses. **Shares the same parser/validator core as Node.** |
+| **Development-server file read/write (Save & Apply)** | **Node (Vite dev middleware / custom endpoint)** | `fs` access to `public/data/`; invokes shared parser/validator core before write; triggers hot-reload. Never bundled into browser. |
+| **Build-time parsing and production-ready data generation** | **Node (build script / Vite plugin)** | Runs at `npm run build`; reads authoritative Lua via `fs`, invokes shared parser/validator core, emits runtime-ready JSON/TS modules for production bundle. |
+
+The browser must not directly access the filesystem. Do not put filesystem write functionality into the Phaser runtime bundle. **Do not introduce two independently maintained parsers that might produce different interpretations of the same Lua definitions.** Separate environment-specific I/O (HTTP `fetch` in browser, `fs` in Node) from the shared parsing and validation logic.
+
+**Development-only security boundaries for the Save & Apply endpoint:**
+- Localhost-only binding (bind to `127.0.0.1`, not `0.0.0.0`). This is separate from origin validation.
+- Origin/request validation: verify the `Origin` header and `Host` header match the actual configured development-server origin (e.g., `http://localhost:5173`). **Do not use wildcard matching** such as `http://localhost:*`. Reject requests with unexpected or missing origins/hosts.
+- Path restrictions: canonicalize and verify target path stays within `public/data/` (or `data/` if Alternative 3 chosen); reject path traversal (`..`, symlinks).
+- HTTP method restriction: `POST`/`PUT` only; no `GET` for writes.
+- Request body validation: parse as Lua data format, validate schema before write.
+- No arbitrary Lua execution: parser must be restricted/data-oriented.
+- Per-server CSRF token for mutating requests (optional but recommended).
+- Endpoint registered only in development mode (`import.meta.env.DEV` or `mode === 'development'`).
+
+Keep the security design proportionate to a local development tool — no over-engineering, but no gaping holes.
+
 ### Runtime loading infrastructure
 
 The `src/` directory should own the TypeScript infrastructure responsible for:
 
-- Retrieving Lua source definitions.
-- Parsing the supported Lua data format.
+- Retrieving Lua source definitions (via HTTP `fetch` in browser; via `fs` in Node build script).
+- Parsing the supported Lua data format (browser-safe parser).
 - Validating definitions and cross-references.
 - Converting parsed definitions into typed runtime data (the contracts in `src/types/Shipmaker.ts`).
 - Registering validated data with the existing Game registries and relevant managers.
@@ -700,19 +738,20 @@ Do not introduce a parallel registry or duplicate existing manager responsibilit
 
 During development:
 
-1. The game retrieves definitions from `public/data/`.
-2. The loading infrastructure parses and validates them.
+1. The game retrieves definitions from `public/data/` via HTTP.
+2. The browser-safe loading infrastructure parses and validates them.
 3. Validated definitions become available to the existing runtime registries.
-4. Shipmaker retrieves existing definitions for editing.
+4. Shipmaker retrieves existing definitions for editing (via HTTP).
 5. Shipmaker validates modifications and previews the changes.
-6. After explicit confirmation, the development server writes the updated Lua source files.
-7. The development environment reloads the affected definitions or restarts the game when necessary.
+6. After explicit confirmation, Shipmaker calls the development-server Save & Apply endpoint (Node middleware).
+7. The endpoint validates, writes updated Lua source files to `public/data/`, and signals reload.
+8. The development environment reloads the affected definitions (hot-reload) or restarts the game when necessary.
 
 ### Production workflow
 
 Investigate and document a suitable build-time pipeline:
 
-`Lua source → Parser → Validation → Runtime-ready generated data → Production build`
+`Lua source (repo) → Node parser/validator → Runtime-ready generated data (JSON/TS modules) → Production bundle`
 
 The production game should consume validated runtime-ready data rather than relying on arbitrary Lua execution in the browser.
 
@@ -727,16 +766,18 @@ JSON export followed by manual copying must no longer be the primary persistence
 Document a safe Save & Apply design covering:
 
 - Localhost-only development access.
-- A development-server endpoint or middleware for file operations.
-- Strict write access to approved `public/data/` directories.
-- Validation before writing.
-- Cross-reference and mounting compatibility checks.
-- Previewing the proposed changes before applying them.
-- Safe file replacement, backup, and recovery considerations.
-- Reloading updated definitions into the development environment.
-- Prevention of path traversal and arbitrary filesystem access.
-- No unrestricted Lua execution or arbitrary script side effects.
-- No production exposure of file-writing endpoints.
+- A development-server endpoint or middleware for file operations (Node-only, never bundled).
+- Strict write access to approved `public/data/` directories (or `data/` if Alternative 3 chosen).
+- Validation before writing (schema + cross-reference checks).
+- Cross-reference and mounting compatibility checks (loadout mountId exists in hull, componentId exists in componentDefinitions, etc.).
+- Previewing the proposed changes before applying them (diff view, validation summary).
+- Safe file replacement, backup, and recovery considerations (atomic write, `.bak` retention, rollback).
+- Reloading updated definitions into the development environment (hot-reload signal or full restart).
+- Prevention of path traversal and arbitrary filesystem access (canonicalize, verify within allowlist).
+- No unrestricted Lua execution or arbitrary script side effects (restricted parser only).
+- No production exposure of file-writing endpoints (guarded by `import.meta.env.DEV` / Vite `mode === 'development'`).
+- Origin/request validation on the endpoint: verify the exact configured development-server origin and the expected request Host; reject unexpected or missing origins for browser-based mutating requests; never use wildcard origin matching.
+- Per-server CSRF token for mutating requests (optional but recommended).
 Prefer a constrained static Lua data format that can be parsed and serialized safely. Do not prematurely select a parser or implementation library without examining project compatibility.
 
 ## Architecture and Existing Responsibilities
@@ -756,21 +797,46 @@ Inspect the existing types in `src/types/Shipmaker.ts` before recommending struc
 
 ## Revised Implementation Phases
 
-Revisit the existing implementation phases to account for:
+Revisit the existing implementation phases to account for correct dependency ordering. Save & Apply infrastructure must exist before editors that persist Lua.
 
-1. **Existing Shipmaker data-model foundations and prerequisite architecture.** (Current: typed contracts exist in `Shipmaker.ts`; `Game` registries exist; `Ship.init()` partially integrates canonical hull/loadout path.)
-2. **Lua data format, parsing, validation, and runtime loading infrastructure.** (Select restricted Lua subset; implement parser/validator; integrate with `Game` registries; development-only hot-reload.)
-3. **Development-only `/shipmaker` access and editor foundation.** (Route, workspace, asset library using existing manifest metadata.)
-4. **Hull Editor, including hardpoints, module mounts, thruster vents, exhaust directions, utility sockets, and active module mounts.**
-5. **Ship Editor, including ship statistics and Lua persistence.**
-6. **Component Editor for weapons and modules (propulsion, utility, active modules).**
-7. **Ship Assembly Editor and loadout authoring.**
-8. **Save & Apply, reload workflow, and production build integration.**
-9. **Verification and architectural tests.**
+### Shared Data Infrastructure and Build Integration
+
+| Phase | Work | Dependencies |
+|---|---|---|
+| **1. Data-model foundations (already implemented)** | Typed contracts in `src/types/Shipmaker.ts`; `Game` registries (`hullDefinitions`, `componentDefinitions`, `shipLoadouts`); `Ship.init()` canonical hull/loadout path. | — |
+| **2. Lua data format & parser** | Select restricted Lua subset; implement a single shared browser-safe parser and validation core; schema validation against Shipmaker.ts contracts. | Phase 1 |
+| **3. Validation & typed runtime conversion** | Cross-reference validation (hullId, loadoutId, componentId, mountId); conversion to typed runtime records; registration with `Game` registries. | Phase 2 |
+| **4. Dev-server read/write & Save & Apply** | Vite dev middleware/endpoint for `public/data/` (or `data/`); validation before write; atomic write/backup; hot-reload signal; localhost/origin/path security. | Phase 3 |
+| **5. Production build integration** | Node build script: read authoritative Lua → parse/validate (using shared parser/validator core) → emit runtime-ready JSON/TS modules → bundle. | Phase 3 + resolution of production Lua distribution decision (see "Important: Production Distribution of Lua Source") |
+
+### Shared Data Infrastructure and Build Integration — Clarification
+
+- Phases 2–4 establish the shared parsing, validation, runtime conversion, and development persistence infrastructure.
+- Phase 5 establishes production build integration.
+- Phase 5 can proceed independently after Phase 3 and the production Lua distribution decision are resolved.
+- Production build integration is not a prerequisite for developing the local Shipmaker editor.
+
+### Editor-Specific UI Work (depend on shared infrastructure)
+
+| Phase | Work | Dependencies |
+|---|---|---|
+| **6. `/shipmaker` workspace & asset library** | Route, editor shell, asset browser using `publicSvgManifest.ts` metadata. | Phase 4 (read) |
+| **7. Hull Editor** | Hardpoints, vents, utility sockets, active module mounts, sprites, exhaust direction; persists to `public/data/hulls/`. | Phase 4 (read/write), Phase 6 |
+| **8. Ship Editor** | Identity, stats, hull/loadout references; persists to `public/data/ships/`. | Phase 4 (read/write), Phase 6 |
+| **9. Component Editor** | Weapons, propulsion, utility, active modules; persists to `public/data/weapons/`, `public/data/modules/`. | Phase 4 (read/write), Phase 6 |
+| **10. Ship Assembly Editor** | Select hull, attach components to mounts, author loadouts; persists to `public/data/loadouts/`. | Phases 7, 8, 9, Phase 4 (read/write) |
+
+### Verification
+
+| Phase | Work | Dependencies |
+|---|---|---|
+| **11. Verification & architectural tests** | Regression matrix (existing + new), browser editor testing, production build verification. | All prior |
 
 These are proposed phases, not a declaration that implementation is already complete.
 
 Reconcile the phases with existing completed work rather than blindly replacing the entire roadmap. Record dependencies and identify which milestones can proceed independently.
+
+**Key dependency insight:** Phases 2–4 establish the shared parsing, validation, runtime conversion, and development persistence infrastructure. Phase 5 (production build integration) depends on Phase 3 and the production Lua distribution decision — it does not inherently require Phase 4 (dev-server Save & Apply) to complete; Phase 5 may proceed independently once its shared validation foundation and the distribution decision are available. Phases 6–10 are editor UI: Phase 6 depends on Phase 4 (read); Phases 7–10 additionally depend on Phase 4 (write) for persistence. Do not duplicate parsing, validation, or persistence logic in each editor — they must share the infrastructure from Phases 2–4.
 
 ## Documentation Quality Requirements
 
@@ -847,4 +913,32 @@ Do not stage, commit, or push any changes.
 
 ## Final Approval Boundary
 
-At this handoff's creation, the architecture audit and proposal exist only as documentation. The prerequisite refactor is awaiting explicit approval. Shipmaker UI, `/shipmaker`, loadout UI, runtime Lua serialization/import/export, and propulsion movement changes are not implemented or authorized by this document. The next implementation step is the reviewed prerequisite architecture phase only, after the developer explicitly approves its exact scope.
+At this handoff's creation, distinguish between:
+
+**Already implemented foundations (do not re-implement):**
+- Typed contracts in `src/types/Shipmaker.ts` (`HullDefinition`, `ComponentDefinition`, `ShipLoadout`, `ShipBlueprintDefinition`, validation primitives).
+- `Game` canonical registries: `hullDefinitions`, `componentDefinitions`, `shipLoadouts`, `legacyCompatibilityViews`, `hullModificationDefinitions`.
+- `Ship.init()` canonical path resolving `hullId`/`loadoutId` through `Game` registries, materializing built-ins and loadout installations.
+- `ShipDataAdapter.ingestLegacyData()` projecting legacy tuples into compatibility views.
+- Player hull, `PlayerCannon` component, and player loadout registered as typed records in `Game.loadGameData()`.
+
+**Remaining prerequisite architecture work (requires explicit approval):**
+- Complete legacy migration for all structured/legacy blueprints (migration order in Prerequisite Refactoring Proposal).
+- Runtime validator/conversion boundary for imported/editor-authored records (TypeScript types don't validate at runtime).
+- Full cross-reference validation across registries (hullId exists, loadoutId exists, mountId exists in hull, componentId exists, etc.).
+- Sprite composition helper and Ship-owned Phaser display object lifecycle (currently `main.ts` creates player/debug visuals).
+
+**Lua parsing/loading/persistence work (NOT implemented):**
+- Restricted Lua subset selection and parser library evaluation.
+- Single shared browser-safe Lua parser and validation core (used by both browser HTTP fetch and Node fs I/O).
+- Schema validation against Shipmaker.ts contracts.
+- Dev-server Save & Apply middleware (Node-only, localhost/origin/path security).
+- Hot-reload / restart integration.
+- Production build-time pipeline (Lua → runtime-ready generated data).
+
+**Shipmaker editor functionality (NOT implemented):**
+- `/shipmaker` route, workspace, asset library.
+- Hull, Ship, Component, Assembly editors.
+- Lua persistence from editors via Save & Apply endpoint.
+
+The next implementation step follows the revised dependency order in **Revised Implementation Phases** and still requires explicit approval at each phase. Do not start Phase 2 without approval. Phase 6 may proceed after Phase 4 read capability is available. Phases 7–10 require Phase 4 read/write capability where they persist authored definitions. Do not require Phase 4 write capability before beginning the read-only workspace and asset library.
