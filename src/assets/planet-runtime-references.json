@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "placements": {
+    "orbit_slot_1": { "order": 1, "textureKey": "planetMap692" },
+    "orbit_slot_2": { "order": 2, "textureKey": "planetMap122" },
+    "orbit_slot_3": { "order": 3, "textureKey": "planetMap111" }
+  }
+}

@@ -1,8 +1,8 @@
-import { readdir, readFile, mkdir, stat, writeFile } from 'node:fs/promises';
+import { readdir, readFile, mkdir, lstat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ASSETS_LOGICAL_PREFIX } from './asset-roots.mjs';
+import { ASSETS_LOGICAL_PREFIX, logicalPathToUrl } from './asset-roots.mjs';
 import { readAssetRegistry, resolveAssetSource, PROJECT_ROOT } from './asset-registry.mjs';
 
 function comparePaths(left, right) {
@@ -23,23 +23,22 @@ function normalizeTextureKey(relativePath) {
     return `public-${normalized || 'asset'}`;
 }
 
-function encodePublicUrl(relativePath) {
-    const encodedPath = relativePath
-        .split('/')
-        .map((segment) => encodeURIComponent(segment))
-        .join('/');
-
-    return `/assets/${encodedPath}`;
+function encodePublicUrl(logicalPath) {
+    const url = logicalPathToUrl(logicalPath);
+    if (!url) throw new Error(`Could not construct runtime URL for logical path "${logicalPath}"`);
+    return url;
 }
 
 async function discoverRegisteredAssets(projectRoot) {
     const registry = await readAssetRegistry(projectRoot);
-    const assets = [...registry.assets].sort((left, right) => comparePaths(left.logicalPath, right.logicalPath));
+    const assets = registry.assets
+        .filter((asset) => asset.contentType === 'SVG')
+        .sort((left, right) => comparePaths(left.logicalPath, right.logicalPath));
     for (const asset of assets) {
         const sourcePath = resolveAssetSource(asset.logicalPath, projectRoot);
         try {
-            const sourceStat = await stat(sourcePath);
-            if (!sourceStat.isFile()) {
+            const sourceStat = await lstat(sourcePath);
+            if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) {
                 throw new Error('not a file');
             }
         } catch (error) {
@@ -145,14 +144,14 @@ export async function createPublicSvgManifest(assetsRoot, outputFile, projectRoo
         ]));
         assets = relativePaths.map((relativePath) => ({
             key: textureKeys.get(relativePath),
-            url: encodePublicUrl(relativePath),
+            url: encodePublicUrl(`${ASSETS_LOGICAL_PREFIX}/${relativePath}`),
             aliases: aliasesByPath.get(relativePath) ?? []
         }));
     } else {
         const registeredAssets = await discoverRegisteredAssets(projectRoot);
         assets = registeredAssets.map((asset) => ({
             key: asset.textureKey,
-            url: encodePublicUrl(asset.logicalPath.slice(`${ASSETS_LOGICAL_PREFIX}/`.length)),
+            url: encodePublicUrl(asset.logicalPath),
             aliases: asset.aliases
         }));
     }

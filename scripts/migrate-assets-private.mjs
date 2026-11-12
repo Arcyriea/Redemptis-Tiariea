@@ -183,8 +183,9 @@ async function readRegularFile(root, relativePath, label) {
 
 async function planMigration(projectRoot) {
     const registry = await readAssetRegistry(projectRoot);
-    if (registry.assets.length !== EXPECTED_ASSET_COUNT) {
-        fail(`expected ${EXPECTED_ASSET_COUNT} registry assets, found ${registry.assets.length}`);
+    const svgAssets = registry.assets.filter((asset) => asset.contentType === 'SVG');
+    if (svgAssets.length !== EXPECTED_ASSET_COUNT) {
+        fail(`expected ${EXPECTED_ASSET_COUNT} registered SVG assets, found ${svgAssets.length}`);
     }
 
     const assetsRoot = path.join(projectRoot, 'public', 'assets');
@@ -202,7 +203,7 @@ async function planMigration(projectRoot) {
     const mappingSource = await readFile(mappingPath, 'utf8');
     const mapping = inspectSourceRootMapping(mappingSource);
 
-    const expectedLogicalPaths = registry.assets.map((asset) => asset.logicalPath.slice('assets/'.length));
+    const expectedLogicalPaths = svgAssets.map((asset) => asset.logicalPath.slice('assets/'.length));
     const publicPaths = await walkSvgFiles(assetsRoot);
     compareInventory(publicPaths, expectedLogicalPaths, 'public/assets SVG inventory');
 
@@ -215,7 +216,7 @@ async function planMigration(projectRoot) {
     assertUniqueCaseInsensitive(privatePaths, 'private/assets SVG inventory');
 
     const privateByLower = new Map(privatePaths.map((item) => [item.toLocaleLowerCase('en-US'), item]));
-    const registryByLogicalPath = new Map(registry.assets.map((asset) => [
+    const registryByLogicalPath = new Map(svgAssets.map((asset) => [
         asset.logicalPath.slice('assets/'.length),
         asset
     ]));
@@ -233,7 +234,7 @@ async function planMigration(projectRoot) {
     }
 
     const records = [];
-    for (const asset of registry.assets) {
+    for (const asset of svgAssets) {
         const relativePath = asset.logicalPath.slice('assets/'.length);
         const publicFile = await readRegularFile(assetsRoot, relativePath, 'public source');
         const publicHash = sha256(publicFile.bytes);
@@ -289,7 +290,7 @@ async function planMigration(projectRoot) {
     }
 
     return {
-        registry,
+        registry: { ...registry, assets: svgAssets },
         records,
         copyRecords,
         mappingPath,

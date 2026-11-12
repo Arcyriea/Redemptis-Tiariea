@@ -1,5 +1,5 @@
 {
-  "registrySchemaVersion": "1.0",
+  "registrySchemaVersion": "1.2",
   "assets": [
     {
       "assetId": "rt.component.aistiaria.side-hull-angular",
@@ -139,80 +139,70 @@
       "logicalPath": "assets/Ships/Yutiarin Kinetic Lance Frigate.svg",
       "textureKey": "public-ships-yutiarin-kinetic-lance-frigate",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.alien-interceptor",
       "logicalPath": "assets/Ships/alien-interceptor.svg",
       "textureKey": "public-ships-alien-interceptor",
       "aliases": ["alien-interceptor"],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.alien-leviathan",
       "logicalPath": "assets/Ships/alien-leviathan.svg",
       "textureKey": "public-ships-alien-leviathan",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.alien-mothership",
       "logicalPath": "assets/Ships/alien-mothership.svg",
       "textureKey": "public-ships-alien-mothership",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.curved-corvette",
       "logicalPath": "assets/Ships/curved-corvette.svg",
       "textureKey": "public-ships-curved-corvette",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.faceted-cruiser",
       "logicalPath": "assets/Ships/faceted-cruiser.svg",
       "textureKey": "public-ships-faceted-cruiser",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.human-dreadnought",
       "logicalPath": "assets/Ships/human-dreadnought.svg",
       "textureKey": "public-ships-human-dreadnought",
       "aliases": ["human-dreadnought"],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.human-frigate",
       "logicalPath": "assets/Ships/human-frigate.svg",
       "textureKey": "public-ships-human-frigate",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.void-dreadnought",
       "logicalPath": "assets/Ships/void-dreadnought.svg",
       "textureKey": "public-ships-void-dreadnought",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.ship.yutiarin-starblade-destroyer",
       "logicalPath": "assets/Ships/yutiarin-starblade-destroyer.svg",
       "textureKey": "public-ships-yutiarin-starblade-destroyer",
       "aliases": [],
-      "contentType": "SVG",
-      "bundleId": "ships1"
+      "contentType": "SVG"
     },
     {
       "assetId": "rt.turret.yutiarin-defense-turret",
@@ -228,10 +218,5 @@
       "aliases": [],
       "contentType": "SVG"
     }
-  ],
-  "bundles": {
-    "ships1": {
-      "bundleFile": "/assets/Ships/ships.bin"
-    }
-  }
+  ]
 }

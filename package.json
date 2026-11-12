@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node scripts/prepare-assets.mjs",
     "dev": "vite",
+    "predev": "node scripts/prepare-assets.mjs --npm-predev",
     "prebuild": "node scripts/prepare-assets.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "tsx --test",
+    "assets:approve-planets": "node scripts/approve-planet-assets.mjs",
+    "assets:approve-planets:apply": "node scripts/approve-planet-assets.mjs --apply",
     "copyright:svg": "node scripts/add-svg-copyright.mjs"
   },
   "devDependencies": {

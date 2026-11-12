@@ -1,0 +1,129 @@
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import {
+    MANIFEST_SCHEMA_VERSION,
+    RUNTIME_CONTRACT_SCHEMA_VERSION,
+    canonicalizeGenerationInput,
+    compareText,
+    computeGenerationId
+} from '../src/assets/rtabContractShared.mjs';
+
+export { MANIFEST_SCHEMA_VERSION, RUNTIME_CONTRACT_SCHEMA_VERSION };
+
+// Legacy numeric names retain their established identities. Other planet names
+// use a stable ASCII slug and a PascalCase Phaser texture key.
+export const PLANET_FILENAME_PATTERN = /^(?:Map-([1-9][0-9]*)|([A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*))\.png$/;
+export const PLANET_TEXTURE_KEY_PATTERN = /^planetMap(?:[1-9][0-9]*|[A-Z][A-Za-z0-9]*)$/;
+
+function planetSlug(name) {
+    return name.toLowerCase().replaceAll('_', '-');
+}
+
+function namedPlanetTextureKey(slug) {
+    const suffix = slug.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('');
+    return `planetMap${suffix}`;
+}
+
+export function derivePlanetIdentity(fileName) {
+    const match = PLANET_FILENAME_PATTERN.exec(fileName);
+    if (!match) {
+        throw new Error(`Invalid planet filename "${fileName}"; expected Map-<positive integer>.png or <PlanetName>.png using ASCII letters, digits, hyphens, or underscores`);
+    }
+    const number = match[1];
+    const name = match[2];
+    const slug = number ? `map-${number}` : planetSlug(name);
+    return {
+        assetId: `rt.planet-map.${slug}`,
+        logicalPath: `assets/Planets/${fileName}`,
+        textureKey: number ? `planetMap${number}` : namedPlanetTextureKey(slug),
+        aliases: [],
+        contentType: 'PNG',
+        bundleId: 'planets'
+    };
+}
+
+export async function readPlanetApprovals(projectRoot) {
+    const filePath = path.join(projectRoot, 'scripts', 'planet-asset-approvals.json');
+    const value = JSON.parse(await readFile(filePath, 'utf8'));
+    if (!value || value.approvalSchemaVersion !== '1' || !value.approvals
+        || typeof value.approvals !== 'object' || Array.isArray(value.approvals)) {
+        throw new Error('Planet approval file must contain approvalSchemaVersion "1" and an approvals object');
+    }
+    const approvals = new Map();
+    const assetIds = new Set();
+    const textureKeys = new Set();
+    for (const [logicalPath, hash] of Object.entries(value.approvals)) {
+        const fileName = path.posix.basename(logicalPath);
+        let identity;
+        try {
+            identity = derivePlanetIdentity(fileName);
+        } catch {
+            throw new Error(`Invalid planet approval record for "${logicalPath}"`);
+        }
+        if (identity.logicalPath !== logicalPath || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash)
+            || assetIds.has(identity.assetId) || textureKeys.has(identity.textureKey)) {
+            throw new Error(`Invalid planet approval record for "${logicalPath}"`);
+        }
+        assetIds.add(identity.assetId);
+        textureKeys.add(identity.textureKey);
+        approvals.set(logicalPath, hash);
+    }
+    return approvals;
+}
+
+export async function readPlanetPlacements(projectRoot) {
+    const filePath = path.join(projectRoot, 'src', 'assets', 'planet-runtime-references.json');
+    const value = JSON.parse(await readFile(filePath, 'utf8'));
+    if (!value || value.schemaVersion !== 1 || !value.placements
+        || typeof value.placements !== 'object' || Array.isArray(value.placements)) {
+        throw new Error('Planet runtime references must contain schemaVersion 1 and named placements');
+    }
+    const placements = Object.entries(value.placements).map(([slot, entry]) => {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(slot) || !entry
+            || !Number.isSafeInteger(entry.order) || entry.order < 1
+            || typeof entry.textureKey !== 'string' || !PLANET_TEXTURE_KEY_PATTERN.test(entry.textureKey)) {
+            throw new Error(`Invalid named planet placement "${slot}"`);
+        }
+        return { slot, order: entry.order, textureKey: entry.textureKey };
+    }).sort((left, right) => left.order - right.order || left.slot.localeCompare(right.slot));
+    const orders = new Set();
+    const keys = new Set();
+    for (const placement of placements) {
+        if (orders.has(placement.order) || keys.has(placement.textureKey)) {
+            throw new Error('Planet runtime placements contain duplicate order values or texture keys');
+        }
+        orders.add(placement.order);
+        keys.add(placement.textureKey);
+    }
+    return placements;
+}
+
+export function calculateGenerationId({ assets, bundles, approvals, placements }) {
+    const input = canonicalizeGenerationInput({ assets, bundles, approvals, placements });
+    return computeGenerationId(input, (serialized) => (
+        createHash('sha256').update(serialized, 'utf8').digest('hex')
+    ));
+}
+
+export function renderRuntimeContract(contract) {
+    return `// Generated by scripts/prepare-assets.mjs. Do not edit.\n`
+        + `export const runtimeAssetContract = Object.freeze(${JSON.stringify(contract, null, 2)} as const);\n`;
+}
+
+export function buildRuntimeContract(manifest, approvals, placements) {
+    const generationId = calculateGenerationId({
+        assets: manifest.assets,
+        bundles: manifest.bundles,
+        approvals,
+        placements: manifest.activePlanetPlacements ?? placements
+    });
+    return {
+        runtimeContractSchemaVersion: RUNTIME_CONTRACT_SCHEMA_VERSION,
+        manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
+        generationId,
+        approvedPlanetSourceSha256: Object.fromEntries([...approvals].sort(([a], [b]) => compareText(a, b))),
+        activePlanetPlacements: [...(manifest.activePlanetPlacements ?? placements)].sort((a, b) => compareText(a.slot, b.slot)),
+        assets: manifest.assets
+    };
+}

@@ -25,16 +25,16 @@ Key deliverable: SHA-256 per asset + per bundle; validate on
 load and on predev/prebuild
 ────────────────────────────────────────
 #: 5
-Phase: Incremental bundle rebuilding
+Phase: Transactional full reconciliation
 Depends on: 4
-Key deliverable: Fingerprint-diff; only changed categories
-rebuild; atomic temp→rename
+Key deliverable: Stage A validation, complete packaging,
+and atomic publication through the transaction journal
 ────────────────────────────────────────
 #: 6
 Phase: Development watcher
 Depends on: 5
-Key deliverable: scripts/watch-assets.mjs; single-flight;
-watches private/ only, not generated output
+Key deliverable: scripts/watch-assets.mjs; Vite watcher;
+debounced single-flight full reconciliation
 ────────────────────────────────────────
 #: 7
 Phase: predev/prebuild integration
@@ -69,8 +69,31 @@ Test and verification criteria
 - Phase 1: node scripts/generate-public-svg-manifest.mjs from private/ produces byte-identical keys/aliases to the current public/ run; node scripts/add-svg-copyright.mjs --dry-run reports 0 malformed after the isMalformed fix; git check-ignore private/assets/Ships/human-dreadnought.svg succeeds; SHA-256 of each private/ file equals its public/ counterpart.
 - Phase 2: node scripts/package-assets.mjs produces ships.bin + asset-manifest.json; re-run is a no-op (fingerprints unchanged); removing one source SVG fails with a clear "missing asset" error; corrupting a .bin is detected by fingerprint mismatch on validate; existing npm test unchanged (120/2 baseline).
 - Phase 3–4: strict saxes parse rejects a malformed SVG before bundling; fingerprint record is present for every asset and matches on re-validation.
-- Phase 5: editing one private/assets/Ships/*.svg rebuilds only ships.bin within ~2s; no partial bundle observable (temp-file + rename).
+- Phase 5: editing a registered source validates and republishes the complete current asset inventory transactionally; no partial output set is observable.
+- Phase 6: the Vite development watcher observes private/ and private/assets/ creation/removal, descendants of private/assets/, and registry changes; event bursts coalesce into serialized full reconciliations, while lock/journal control files do not trigger reconciliation.
 - Phase 7: npm run predev succeeds with private/ present (generates) and with private/ absent (validates committed bundles only, fails clearly if a bundle is missing).
 - Phase 8: game boots from committed .bin alone; public-svg-manifest.test.ts still passes; new test asserts provider resolves the same keys including legacy aliases central-hull, human-dreadnought, alien-interceptor.
 - Phase 9: per-category git rm public/assets/<cat>/*.svg after verification; build still works from .bin.
 - Phase 10: simulated clean clone runs npm run dev/build from committed bundles only; dist/ scan finds zero uncompiled SVG source; git check-ignore private/ succeeds.
+
+## Phase 3B.3 Stage A — Folder-derived packaging
+
+The one-shot packager derives category membership from immediate subdirectories of `private/assets/` and recursively includes registered files within each category. The RTAB outputs are `ships.bin` (10 SVGs), `components.bin` (19 SVGs), `turrets-platforms.bin` (2 SVGs), and `planets.bin` (3 PNGs); nested source folders do not create additional bundles. The registry owns asset identity and runtime metadata, while folder names alone determine bundle membership.
+
+The registry schema (`registrySchemaVersion` 1.2), generated asset-manifest schema (`manifestSchemaVersion` 1.2), and RTAB binary format versions are independent. RTAB 1.0 is SVG-only; RTAB 1.1 supports SVG and PNG. Existing SVG bundles remain RTAB 1.0, while `planets.bin` is RTAB 1.1. The registry and generated asset manifest contain 34 assets: the 31 game SVGs and three planet PNGs. All three PNGs are mandatory private sources and must match their approved fingerprints; public PNG copies are never packaging fallbacks. `Map-111-2.png` and `Map-122-2.png` remain public and outside this migration. The generated Phaser SVG manifest remains SVG-only with 31 entries; Phase 3C runtime loading is not part of this stage.
+
+The standalone PNG validator remains available and is used to validate the packaged PNG payloads, including structure, CRCs, decompression, and supported dimensions/profile. RTAB packaging provides binary encapsulation and SHA-256 integrity checks, not encryption or cryptographic concealment; the asset bytes remain extractable.
+
+Preparation uses an exclusive process lock and an append-only JSONL transaction journal. Each checksummed record carries the transaction ID and next sequence number; every ordinary output filesystem operation is preceded by a flushed intent and followed by a flushed completion. Lock creation/removal and journal creation/removal are transaction-control lifecycle operations and are not recursively recorded inside the journal they control. A committed-state record explicitly marks the new manifest as committed. Recovery runs only after exclusive lock acquisition, validates the entire journal and actual file hashes, then completes a validated commit or rolls back verified prior outputs. If recovery finds a durable `rolled-back` state, it re-verifies all prior output hashes and confirms temporary/backup artifacts are absent before removing the journal; it never repeats the rollback state transition. Malformed, truncated, or ambiguous journals and unexpected artifacts remain untouched for manual inspection.
+
+An existing lock is never removed automatically, including when its PID appears inactive. The `processStartIdentity` written by the current implementation is a Linux `/proc` start-tick identity where available; the Windows fallback, `estimated-unix-ms`, is only an estimate derived from process uptime and is advisory, not an OS-native process creation identity. To clear a stale lock, stop all asset preparation processes, inspect the lock JSON, and independently verify the owner and process start using the operating system. On Windows, inspect `Get-Process -Id <pid> -ErrorAction SilentlyContinue | Select-Object Id,StartTime,Path` and `Get-CimInstance Win32_Process -Filter "ProcessId = <pid>" | Select-Object ProcessId,CommandLine,CreationDate`; compare the executable, command line, and creation time with the lock metadata and confirm no preparation process is active. On Linux, compare `processStartIdentity` with `/proc/<pid>/stat` start ticks. Hostname, PID, age, or the Windows estimate alone is not proof of staleness. Only after an operator confirms the owner is no longer active, remove that exact file from the repository root with `Remove-Item -LiteralPath .\\private\\.asset-package.lock` (or the platform's equivalent); never remove journal or bundle artifacts as part of lock cleanup. If the owner cannot be verified or the identity is ambiguous, preserve the lock and escalate rather than retrying preparation. On clean clones without `private/`, validation checks for transaction artifacts without recovering or modifying them.
+
+Stage A does not add a filesystem listener, runtime hot reload, mod discovery/loading, Phaser bundle loading, or Phase 3C behavior.
+
+## Phase 3B.3 Stage B — Development asset watcher
+
+The serve-only Vite plugin watches lifecycle events for `private/` and `private/assets/`, all descendants of `private/assets/`, and `scripts/asset-registry.json`. Event paths are normalized before matching, including Windows separators and case-insensitive comparisons. The Stage A lock and transaction journal (`private/.asset-package.lock` and `private/.asset-package-transaction.jsonl`) are explicitly excluded so transaction-control activity cannot trigger reconciliation loops.
+
+Relevant events are debounced and serialized. Each reconciliation calls Stage A `prepareAssets()` for the complete current inventory; Stage B does not build per-category bundles or introduce another packaging or publication path. The plugin attaches listeners before its startup reconciliation, coalesces changes that arrive during preparation into a follow-up pass, and relies on Stage A validation and transactional publication to preserve the last valid output set when a source set is invalid.
+
+An invalid source set is reported and is not retried until another relevant event occurs. A Vite watcher error is reported, triggers at most one recovery reconciliation, and marks monitoring degraded so a dev-server restart is required to restore reliable event tracking. Server shutdown cancels pending debounce work, detaches plugin listeners, and waits for an active reconciliation. `predev` and `prebuild` continue to perform their existing full reconciliations independently of the development watcher.

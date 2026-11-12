@@ -11,6 +11,7 @@ const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..');
 interface RegistryAsset {
     assetId: string;
     logicalPath: string;
+    contentType: string;
 }
 
 interface Registry {
@@ -84,7 +85,7 @@ async function createFixture(run: (projectRoot: string, registry: Registry, mapp
     ));
     await writeFile(path.join(scriptsRoot, 'asset-roots.mjs'), mappingBefore);
 
-    for (const asset of registry.assets) {
+    for (const asset of registry.assets.filter((entry) => entry.contentType === 'SVG')) {
         const bytes = fixtureSvg(asset.assetId);
         const publicPath = path.join(publicRoot, nativePath(asset.logicalPath.slice('assets/'.length)));
         await mkdir(path.dirname(publicPath), { recursive: true });
@@ -106,7 +107,7 @@ async function createFixture(run: (projectRoot: string, registry: Registry, mapp
 
 async function readAllPrivateHashes(projectRoot: string, registry: Registry) {
     const result = new Map<string, string>();
-    for (const asset of registry.assets) {
+    for (const asset of registry.assets.filter((entry) => entry.contentType === 'SVG')) {
         const filePath = path.join(
             projectRoot,
             'private',
@@ -123,7 +124,7 @@ test('dry-run reports the exact 21-file migration without changing sources or ma
         const mappingAfter = await readFile(path.join(projectRoot, 'scripts', 'asset-roots.mjs'));
         const privateSvgPaths = await listSvgFiles(path.join(projectRoot, 'private', 'assets'));
         const expectedCopyBytes = registry.assets
-            .filter((asset) => !asset.logicalPath.startsWith('assets/Ships/'))
+            .filter((asset) => asset.contentType === 'SVG' && !asset.logicalPath.startsWith('assets/Ships/'))
             .reduce((total, asset) => total + fixtureSvg(asset.assetId).length, 0);
 
         assert.equal(report.mode, 'dry-run');
@@ -134,7 +135,7 @@ test('dry-run reports the exact 21-file migration without changing sources or ma
         assert.equal(report.mappingChangeRequired, true);
         assert.equal(report.assets.length, 31);
         assert.deepEqual(privateSvgPaths, registry.assets
-            .filter((asset) => asset.logicalPath.startsWith('assets/Ships/'))
+            .filter((asset) => asset.contentType === 'SVG' && asset.logicalPath.startsWith('assets/Ships/'))
             .map((asset) => asset.logicalPath.slice('assets/'.length))
             .sort());
         assert.deepEqual(mappingAfter, mappingBefore);
@@ -145,7 +146,7 @@ test('dry-run reports the exact 21-file migration without changing sources or ma
 test('apply copies all registered sources, updates roots only after verification, and preserves public files', async () => {
     await createFixture(async (projectRoot, registry, mappingBefore) => {
         const publicHashes = new Map<string, string>();
-        for (const asset of registry.assets) {
+        for (const asset of registry.assets.filter((entry) => entry.contentType === 'SVG')) {
             const publicPath = path.join(
                 projectRoot,
                 'public',
@@ -168,13 +169,13 @@ test('apply copies all registered sources, updates roots only after verification
 
         const hashes = await readAllPrivateHashes(projectRoot, registry);
         const expectedCopyBytes = registry.assets
-            .filter((asset) => !asset.logicalPath.startsWith('assets/Ships/'))
+            .filter((asset) => asset.contentType === 'SVG' && !asset.logicalPath.startsWith('assets/Ships/'))
             .reduce((total, asset) => total + fixtureSvg(asset.assetId).length, 0);
         assert.equal(report.mode, 'migrated');
         assert.equal(report.filesToCopy, 21);
         assert.equal(report.copyBytes, expectedCopyBytes);
         assert.equal(hashes.size, 31);
-        for (const asset of registry.assets) {
+        for (const asset of registry.assets.filter((entry) => entry.contentType === 'SVG')) {
             assert.equal(hashes.get(asset.logicalPath), publicHashes.get(asset.logicalPath));
             const publicPath = path.join(projectRoot, 'public', nativePath(asset.logicalPath));
             assert.equal(hash(await readFile(publicPath)), publicHashes.get(asset.logicalPath));
