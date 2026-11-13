@@ -11,15 +11,14 @@ This document is a self-contained architectural handoff for a future developer-o
 | Item | Inspected value |
 |---|---|
 | Repository | `Arcyriea/Redemptis-Tiariea` |
-| Date inspected | 2026-11-12 |
+| Date inspected | 2026-11-13 |
 | Branch | `main` |
-| GitHub HEAD | `d3325d2` |
-| HEAD commit | `Commit final documentations changes.` |
+| Main HEAD inspected before this documentation update | `1c8dd23` |
 | Audit baseline | `74c6821` (Documenting future development direction about involving lua files for weapons and modules stat definitions....) |
-| Commits since baseline | Documentation-only changes (`c20165a`, `d3325d2`) |
-| Remote comparison | GitHub `main` HEAD is `d3325d2`; the audit baseline `74c6821` predates the documentation-only commits. |
+| Commits between baseline and inspected HEAD | Documentation-only changes (`c20165a`, `d3325d2`, `99ce468`, `1c8dd23`) |
+| Snapshot relationship | The implementation code at the audit baseline and inspected HEAD is identical; all intervening commits changed documentation only. This update is another documentation-only follow-up to the inspected snapshot. |
 
-> **Note:** The implementation code at `74c6821` and `d3325d2` is identical; only documentation files changed between them. This document describes the implementation state as it exists at both commits.
+> **Note:** The implementation code at audit baseline `74c6821` and inspected HEAD `1c8dd23` is identical; all commits between them changed documentation files only. The present document update is a further documentation-only change.
 
 ## Project Instructions and Architecture
 
@@ -313,8 +312,6 @@ export interface TurretWeaponDefinition extends BaseComponentDef {
 export interface PropulsionComponentDefinition extends BaseComponentDef {
     kind: 'propulsion';
     category: string;
-    attachment: ComponentAttachment;
-    dimensions?: { length: number; width: number; height: number };
     propulsion: { output: number };
     sprites: readonly SpriteLayer[];
     // operation: { cooldown, energyCost } inherited from BaseComponentDef
@@ -323,8 +320,6 @@ export interface PropulsionComponentDefinition extends BaseComponentDef {
 export interface UtilityComponentDefinition extends BaseComponentDef {
     kind: 'utility';
     category: string;
-    attachment: ComponentAttachment;
-    dimensions?: { length: number; width: number; height: number };
     sprites: readonly SpriteLayer[];
     // operation: { cooldown, energyCost } inherited from BaseComponentDef
 }
@@ -563,9 +558,9 @@ The Lua authoring and editor-preview sections refer to the intended target conve
 
 ## Completed PlayerCannon Migration — Canonical Registration and Visual Composition Status
 
-The existing player definition becomes a `ShipBlueprintDefinition` referencing an explicit player `HullDefinition` and player `ShipLoadout`. The hull has one explicitly defined hardpoint at `(0, 0)`, rotation `0`, compatible with spinal weapons. The player loadout assigns `PlayerCannon` to that point. It is not a built-in; other points remain empty.
+The player already uses a canonical `ShipBlueprintDefinition` referencing its registered `HullDefinition` and `ShipLoadout`. The hull has one hardpoint at `(0, 0)`, rotation `0`, compatible with spinal weapons. The player loadout assigns `PlayerCannon` to that point. It is not a built-in; other points remain empty.
 
-`PlayerCannon` becomes a spinal `WeaponComponentDefinition`:
+`PlayerCannon` is registered as a spinal `SpinalWeaponDefinition`:
 
 | Property | Preserved value |
 |---|---|
@@ -579,7 +574,7 @@ The existing player definition becomes a `ShipBlueprintDefinition` referencing a
 | Splash radius | `0` |
 | Dimensions | Unknown; omit `dimensions` |
 | Attachment position/rotation | `(0, 0)` / `0°` |
-| Muzzle position/direction | `(0, 0)` / `0°` |
+| `geometry.muzzles` | Empty array; shared transform supplies an effective origin muzzle at `(0, 0)` / `0°` |
 
 **Implementation status of PlayerCannon migration:**
 
@@ -588,9 +583,9 @@ The existing player definition becomes a `ShipBlueprintDefinition` referencing a
 - **PlayerCannon visuals: `fixed: []`** — The registered `PlayerCannon` component has an empty fixed visual layers array.
 - **PlayerCannon muzzles: `[]`** — The registered `PlayerCannon` component has an empty muzzles array. The origin muzzle at fire time is supplied by `WeaponTransform.resolveWeaponMuzzles()` empty-array fallback (`{ position: {0,0}, directionDeg: 0 }`), **not by an explicitly authored muzzle**.
 - **Visual composition: NOT MIGRATED** — The player's visual composition still uses the legacy path in `main.ts` (scene-owned container synchronized to logical ship). The deterministic sprite composition helper and Ship-owned Phaser display-object lifecycle remain **proposed prerequisite work**, not implemented.
-- **Coordinates are canonical pixels, not legacy ×5** — The canonical `PlayerCannon` definition uses `attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 }` and `muzzles: []` in **local pixels**. The legacy `×5` scaling occurs exactly once in `Ship.initLegacyTuple()` and `ShipDataAdapter.ingestLegacyData()` for unconverted legacy tuples only. Canonical definitions do not apply the ×5 factor.
+- **Coordinates are canonical pixels, not legacy ×5** — The canonical `PlayerCannon` definition uses `attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 }` and `muzzles: []` in **local pixels**. Legacy `×5` scaling occurs in the separate legacy paths `Ship.initLegacyTuple()`, `Ship.initStructuredLegacyBlueprint()`, and `ShipDataAdapter.ingestLegacyData()`. Canonical definitions do not apply the ×5 factor.
 
-| `Ship.rotation` | Current and proposed muzzle origin | Ship-forward direction | 600-speed muzzle vector before inherited shooter velocity |
+| `Ship.rotation` | Effective origin muzzle from the shared empty-array fallback | Ship-forward direction | 600-speed muzzle vector before inherited shooter velocity |
 |---:|---|---|---|
 | 0° | `(ship.x, ship.y)` | `(1, 0)` right | `(600, 0)` |
 | 90° | `(ship.x, ship.y)` | `(0, 1)` down | `(0, 600)` |
@@ -625,7 +620,7 @@ The generated manifest contains the public component, ship, and turret/platform 
 
 ## Prerequisite Refactoring Proposal — Reconciled with Implementation State
 
-This section distinguishes between **already implemented foundations** and **remaining integration work**. The implementation at `d3325d2` (identical code to `74c6821`) has already completed the core data-model migration. Do not re-implement these foundations.
+This section distinguishes between **already implemented foundations** and **remaining integration work**. The implementation code at inspected HEAD `1c8dd23` (identical to audit baseline `74c6821`) has already completed the core data-model migration. Intervening commits changed documentation only. Do not re-implement these foundations.
 
 ### Implemented Foundations (do not re-implement)
 
@@ -772,7 +767,7 @@ Shipmaker is a developer-only authoring tool at `/shipmaker`, not gameplay UI. C
 - Place active module mounts with category acceptance and optional fixed built-ins.
 - Display point occupancy and never make an ordinary hardpoint typed as permanently spinal or turret.
 
-**Coordinate convention:** Authoring targets the **proposed component-local attachment datum** convention. Current runtime requires mount-local attachment data until the WeaponTransform migration is implemented. Editor preview must translate between conventions or target the future runtime once migrated.
+**Coordinate convention:** Until the approved `WeaponTransform` migration is implemented, authoring and editor preview must use the **current mount-local attachment convention**. Do not author component-local attachment-datum data yet; no adapter currently translates between the conventions. The component-local datum convention remains the proposed future target after the runtime migration.
 
 ### Component Authoring and Preview
 
@@ -783,7 +778,7 @@ Shipmaker is a developer-only authoring tool at `/shipmaker`, not gameplay UI. C
 - Preview component alignment, fixed/rotating groups, occupied/unoccupied hull points, and the **proposed target** component transforms (component-local attachment datum convention).
 - No aiming AI, combat automation, movement simulation, or gameplay entities in editor preview.
 
-**Coordinate convention:** Authoring targets the **proposed component-local attachment datum** convention. Current runtime uses mount-local attachment data. Editor preview must translate between conventions or target the future runtime once the WeaponTransform migration is implemented.
+**Coordinate convention:** Until the approved `WeaponTransform` migration is implemented, component authoring and editor preview must use the **current mount-local attachment convention**. Do not author component-local attachment-datum data yet; no adapter currently translates between the conventions. The component-local datum convention remains the proposed future target after the runtime migration.
 
 ## Lua Data Organization
 
