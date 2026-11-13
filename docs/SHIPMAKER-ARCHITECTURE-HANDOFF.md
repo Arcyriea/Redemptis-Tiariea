@@ -13,10 +13,13 @@ This document is a self-contained architectural handoff for a future developer-o
 | Repository | `Arcyriea/Redemptis-Tiariea` |
 | Date inspected | 2026-11-12 |
 | Branch | `main` |
-| Local HEAD | `74c6821` |
-| HEAD commit | `Documenting future development direction about involving lua files for weapons and modules stat definitions....` |
-| Local worktree | Modified: `docs/WEAPON-CONTENT-AND-BEHAVIOR-ARCHITECTURE.md` |
-| Remote comparison | Local HEAD and live `git ls-remote origin refs/heads/main` both resolved to `74c6821` during this reconciliation. |
+| GitHub HEAD | `d3325d2` |
+| HEAD commit | `Commit final documentations changes.` |
+| Audit baseline | `74c6821` (Documenting future development direction about involving lua files for weapons and modules stat definitions....) |
+| Commits since baseline | Documentation-only changes (`c20165a`, `d3325d2`) |
+| Remote comparison | GitHub `main` HEAD is `d3325d2`; the audit baseline `74c6821` predates the documentation-only commits. |
+
+> **Note:** The implementation code at `74c6821` and `d3325d2` is identical; only documentation files changed between them. This document describes the implementation state as it exists at both commits.
 
 ## Project Instructions and Architecture
 
@@ -50,7 +53,11 @@ These registries are populated during `Game.loadGameData()` via `ShipDataAdapter
 
 ### Ship Initialization and Lifecycle
 
-`ObjectPool.getShipObject(type)` calls `Ship.init(type)` on new and reused ships. `Ship.init()` first resolves a structured blueprint using the `ShipManager` source-key catalogue, otherwise it reads a legacy tuple from `Game.shipData`. Structured components attach by `partIndex`; legacy tuples encode component names for each part. Parts are constructed with `x` and `y` multiplied by five, and components are initialized against the resulting part object.
+`ObjectPool.getShipObject(type)` calls `Ship.init(type)` on new and reused ships. `Ship.init()` resolves the ship's blueprint through three distinct paths:
+
+1. **Canonical path (`initCanonicalBlueprint`)**: Resolves a structured `ShipBlueprintDefinition` via `ShipManager` source-key catalogue using `hullId`/`loadoutId`. Builds parts from `HullDefinition`, materializes built-ins (`installationSource: 'built-in'`), installs loadout components by `mountId`. This is the canonical path for all new ships.
+2. **Structured legacy path (`initStructuredLegacyBlueprint`)**: Legacy blueprint with structured data but using `partIndex` to attach components. Translates to the canonical model internally.
+3. **Legacy tuple path (`initLegacyTuple`)**: Reads a legacy tuple from `Game.shipData`. Parts constructed with `x`/`y` multiplied by five; components initialized against resulting part objects.
 
 The ordinary NPC path is `Game` spawn queue → `ShipManager.createShip()` → `ObjectPool.getShipObject()` → `Ship.init()` → `EntityManager` registration and `Game.shipQueue` insertion. `Game.update()` updates managed ships through `shipQueue`, processes projectile lifecycle, then processes spawn and respawn queues. `processSectorShips()` converts sector ship rows to spawn queue entries; `clearCurrentSector()` clears queues, registries, pools, and managed projectiles.
 
@@ -60,13 +67,24 @@ Debug NPC ships are another distinct path. `main.ts` temporarily registers test 
 
 ### Components, Weapons, and Projectiles
 
-`Component.init()` reads `Game.componentData[name]` (legacy) or receives a typed `ComponentDefinition`, interprets its tuple/definition, and constructs either `ManagedWeapon` when `ProjectileManager` is available or `Weapon` otherwise. A component retains a ship and a `shipPart`, but has no mount identity, compatibility validation, installation origin, sprite collection, or per-instance turret state in the current implementation.
+`Component.init()` accepts a typed `ComponentDefinition`, a `LegacyComponentDef`, or a string key (looking up in `Game.componentDefinitions` then `Game.componentData`). It constructs either `ManagedWeapon` when `ProjectileManager` is available or `Weapon` otherwise. A component retains a ship and a `shipPart`, but has **no dedicated `mountId` field or sprite collection** in the canonical path either.
 
-`Weapon.init()` reads the same tuple to set firing mode and weapon values. `Weapon.activate()` dispatches by firing mode. Its Arcade path converts `Ship.rotation` from degrees to radians, rotates the attached part offset to compute projectile origin, and uses the ship angle for direction. `ManagedWeapon` duplicates the part-offset transform and delegates projectile creation to `ProjectileManager`.
+In the **canonical path** (`applyDefinition()` on typed `ComponentDefinition`), `Component` stores:
+- `installationSource`: `'loadout'` | `'built-in'` | `'legacy'`
+- `fixed`: `boolean` (true for built-ins)
+- `turretAngleDeg`: `number` (per-instance turret angle, currently initializes to `0`)
+
+`Ship.addComponent()` assigns `installationSource` and `fixed` **after** component initialization.
+
+`Weapon.init()` reads the tuple/definition to set firing mode and weapon values. `Weapon.activate()` dispatches by firing mode. Its Arcade path converts `Ship.rotation` from degrees to radians, computes projectile origin, and uses ship angle for direction.
+
+**Both the fallback `PhysicsProjectile` path (`Weapon.fireArcadeProjectile`) and the managed path (`ManagedWeapon.fireArcadeProjectile`) use the shared `WeaponTransform.resolveWeaponMuzzles()` implementation.** `ManagedWeapon` does **not** duplicate the part-offset transform; it delegates muzzle resolution to the shared transform.
 
 When a `ProjectileManager` exists, `Component` prefers `ManagedWeapon`. `ManagedWeapon` snapshots source entity ID and faction at firing time and calls `ProjectileManager.spawn()`. The manager owns scene binding, pooling, velocity initialization, attribution retention, lifespan, swept collision/damage, cleanup, and scene shutdown handling. It does not own weapon energy/cooldown or register projectiles in `EntityManager`.
 
 `PlayerCannon` currently has damage `10`, firing mode `ProjectileArcade`, range `400`, cooldown `0.15` seconds, energy cost `5`, projectile speed `600`, and splash radius `0`. `Component.activate()` spends energy and starts cooldown only after successful activation. The `ProjectileSpawnConfig` does not carry weapon range or splash radius, and collision applies direct damage; those tuple values are not currently used to provide range/splash gameplay. The refactor must retain the data values without claiming new behavior for them.
+
+**Compatibility validation happens in `Ship.validateCanonicalMount()` before canonical component installation.** The `shipPart` passed to `Component.init()` carries the mount position and rotation in mount-local coordinates; `Component` does not receive mount identity or validate compatibility.
 
 ### Entity, Pool, and Modular Hull Boundaries
 
@@ -78,21 +96,21 @@ When a `ProjectileManager` exists, `Component` prefers `ManagedWeapon`. `Managed
 
 ## Current Versus Proposed Compatibility
 
-| Concern | Current implementation | Compatibility | Prerequisite change |
+| Concern | Current implementation | Compatibility | Remaining work |
 |---|---|---|---|
-| Ship catalogue | `ShipBlueprint` indexes structured definitions and legacy `Game.shipData` tuples. | PARTIALLY COMPATIBLE | Preserve the catalogue and provide compatibility resolution for hull/loadout IDs. |
-| Hull identity/geometry | Player/debug definitions include gameplay parts; no reusable hull registry. | INCOMPATIBLE | Add `HullDefinition` for shared geometry, sprites, and installation points (already typed in `Shipmaker.ts`). |
-| Generic weapon hardpoints | No runtime hardpoint abstraction in the ship path; `ModularHull` has disconnected typed points. | INCOMPATIBLE | Add generic hull hardpoints with explicit accepted weapon configurations (already typed). |
-| Empty/loadout assignment | Current player blueprint directly attaches a cannon to part index zero. | PARTIALLY COMPATIBLE | Move player-selectable installations into explicit `ShipLoadout`; empty mounts remain empty. |
-| Component definitions | Tuple registry provides categories and some operation values. | PARTIALLY COMPATIBLE | Add typed, reusable `ComponentDefinition`, independent visuals, geometry, attachment data, and optional dimensions (already typed). |
-| Spinal/turret models | No spinal/turret distinction in component mount semantics, pivots, limits, or barrel/muzzle data. | NOT IMPLEMENTED | Add discriminated component configurations; hull points remain generic and declare compatibility. |
-| Built-in components | No built-in assignment or installation-origin distinction. | NOT IMPLEMENTED | Support explicit fixed built-ins on a compatible hull point; never auto-fill. |
-| Thruster vents | No vent or propulsion component model; movement is independent. | NOT IMPLEMENTED | Add vent and propulsion metadata/validation only; do not alter movement. |
-| Component/hull visuals | Whole-ship visual sprite lists exist; components do not own visual layers. | PARTIALLY COMPATIBLE | Separate reusable hull and component sprite collections, retaining texture keys. |
-| Coordinate handling | Part offsets scale by five; both firing paths rotate the part offset by ship rotation. | PARTIALLY COMPATIBLE | Convert legacy offsets once and use a common mount/component/muzzle transform. |
-| Versioned authoring data | No external data schema, validator, serializer, or import/export boundary. | NOT IMPLEMENTED | Future serializer boundary must validate portable versioned data; not part of prerequisite code. |
-| Player/NPC lifecycles | Separate player and managed NPC paths already work. | COMPATIBLE WITH DATA ADAPTER | Resolve common definitions without merging their registration, update, render, or cleanup paths. |
-| Projectile lifecycle | `ProjectileManager` owns pooling, attribution, collision, lifespan, and cleanup. | COMPATIBLE | Preserve ownership and verify spawn transform integration only. |
+| Ship catalogue | `ShipBlueprint` indexes canonical definitions (`hullId`/`loadoutId`) and legacy `Game.shipData` tuples via `syncFromGame()`. | COMPATIBLE | Legacy migration completion (see Migration Order). |
+| Hull identity/geometry | `Game.hullDefinitions` registry populated; `HullDefinition` typed contracts exist; player hull registered. | IMPLEMENTED (foundations) | Complete migration for all structured/legacy blueprints. |
+| Generic weapon hardpoints | `WeaponHardpoint` with `accepts: readonly ('spinal' \| 'turret')[]` implemented; validation in `Ship.initCanonicalBlueprint()`. | IMPLEMENTED (foundations) | Full migration across all hull definitions. |
+| Empty/loadout assignment | `ShipLoadout` with explicit `installations`; player loadout registered; empty loadout valid. | IMPLEMENTED (foundations) | Complete migration across all blueprints. |
+| Component definitions | `Game.componentDefinitions` registry populated; `ComponentDefinition` typed contracts exist; `PlayerCannon` registered. | IMPLEMENTED (foundations) | Complete migration for all component categories. |
+| Spinal/turret models | Discriminated `SpinalWeaponDefinition` / `TurretWeaponDefinition` types; geometry, visuals, operation all typed. | IMPLEMENTED (data contracts) | **Data contracts:** complete. **Mounting checks:** hardpoint `accepts` validation in `Ship.initCanonicalBlueprint()`. **Proposed physical validation:** turret pivot/limits/barrels dimension checks not yet implemented. **Proposed visual/gameplay integration:** turret pivot/barrel/muzzle transformation, aiming, and visual rotation not yet implemented. |
+| Built-in components | `builtInComponentId` on all mount types; materialized as fixed `installationSource: 'built-in'` instances in `Ship.initCanonicalBlueprint()`; reserves point; rejects loadout replacement. | IMPLEMENTED (foundations) | Full migration across all hulls. |
+| Thruster vents | `ThrusterVent` typed with position, exhaust direction, `acceptsPropulsionCategories`, restrictions, `builtInComponentId`; validation in `Ship.initCanonicalBlueprint()` checks propulsion category. | IMPLEMENTED (data contracts, mounting checks) | **Data contracts & mounting checks:** complete (category only). **Proposed physical validation:** vent opening dimension checks, `maxComponentDimensions` envelope checks, `maxPropulsionOutput` cap, and dimension validation are not yet implemented. **Proposed visual/gameplay integration:** propulsion movement behavior remains separate work; exhaust visual rotation with ship/vent is metadata only. |
+| Component/hull visuals | `SpriteLayer` typed; `HullDefinition.sprites`, `ComponentDefinition.visuals.fixed/rotating` defined; deterministic 5-key sort order specified. | IMPLEMENTED (data model) | Deterministic sprite composition helper and Ship-owned Phaser display-object lifecycle remain proposed. |
+| Coordinate handling | `WeaponTransform.ts` shared resolution used by both `Weapon.resolveMuzzles()` (fallback `PhysicsProjectile` path) and `ManagedWeapon.fireArcadeProjectile()` (managed projectile path); legacy `×5` scaling occurs once in `Ship.initLegacyTuple()` and `ShipDataAdapter.ingestLegacyData()`. | IMPLEMENTED (shared transform) | Full migration of legacy coordinate paths. |
+| Versioned authoring data | No external Lua schema/parser/serializer. | NOT IMPLEMENTED | External Lua parsing, loading, validation, and persistence. |
+| Player/NPC lifecycles | Separate player (scene-owned) and NPC (managed queue) paths work; `Ship.init()` canonical resolution shared. | COMPATIBLE | Preserve boundaries during integration. |
+| Projectile lifecycle | `ProjectileManager` owns pooling, attribution, collision, lifespan, cleanup; `ManagedWeapon` delegates spawn. | COMPATIBLE | Preserve ownership; verify spawn transform integration. |
 
 ## Proposed Data Ownership
 
@@ -107,237 +125,291 @@ The Game registries own shared configuration records; a blueprint owns its ship-
 
 During migration, each unconverted legacy `Game.shipData` ship tuple and `Game.componentData` component tuple remains the authoritative source for that entry. A temporary adapter projects the tuple values into the shape consumed by the new initialization/composition path; that projected view is ephemeral adapter output, not a second canonical definition registry or cache. `ShipManager` remains the blueprint catalogue owner, and its legacy resolution continues to consult the existing source rather than retaining a competing copy. Existing structured entries remain authoritative in their current form until individually migrated. Once an entry is migrated, the corresponding structured hull/component/loadout records owned by `Game` become its canonical source. Preserve both paths until tests verify parity.
 
-## Three-Definition Architecture (Implemented in Types)
+## Three-Definition Architecture — Exact Existing Contracts (src/types/Shipmaker.ts) and Proposed Extensions
 
-The following TypeScript contracts exist in `src/types/Shipmaker.ts` and represent the architectural contract. Runtime validation is required for imported or editor-authored records because TypeScript types do not validate data at runtime.
+**Authority:** The exact existing TypeScript contracts are those currently in `src/types/Shipmaker.ts`. Everything below labeled **[EXISTING]** reflects that source exactly. Everything labeled **[PROPOSED]** is a design extension not yet present in the source and is preserved here as the intended future shape. Runtime validation is required for imported or editor-authored records because TypeScript types do not validate data at runtime.
 
-### Shared Primitives and Built-Ins
+Do not treat [PROPOSED] fields as implemented. They must be implemented through the approved prerequisite refactoring phases before they exist in the runtime.
 
-```ts
-type Point2 = { x: number; y: number };
-
-interface Dimensions {
-  length?: number; // full envelope extent along component-local +X
-  width?: number;  // full envelope extent along component-local +Y
-  height?: number; // full envelope extent along component-local +Z
-}
-
-interface SpriteLayer {
-  id: string;
-  textureKey: string;
-  position: Point2; // hull-, component-, or rotationFrame-local texture-origin position
-  rotationDeg?: number;
-  scale?: Point2;
-  textureOrigin?: Point2; // finite Phaser texture-origin coordinates
-  rotationFrame?: 'component' | 'turret';
-  order: number; // deterministic composition order; lower renders first
-}
-
-interface ComponentAttachment {
-  position: Point2; // component-local attachment datum
-  attachmentRotationDeg: number;
-}
-```
-
-The component-local visual origin is `(0, 0)`, the origin of the component frame used by component-frame sprite positions, attachment coordinates, barrel geometry, and muzzles. It is not necessarily the attachment datum or center of the physical bounding envelope. `ComponentAttachment.position` is the component-local attachment datum and may be offset from that origin. `Dimensions` describes full bounding-envelope extents only; it has no envelope-center/offset field. `textureOrigin` selects the image point placed at a layer position; it is distinct from component origin and attachment datum, and its numeric coordinates must be finite without an imposed `[0, 1]` project restriction.
-
-For component sprite layers, `rotationFrame` defaults to `'component'` when omitted. A component-frame layer's position and `rotationDeg` are relative to the component visual origin and do not follow turret rotation. A turret-frame layer's position and rotation are relative to the turret pivot; it belongs to that instance's pivot-positioned rotating group and follows its mechanical `turretAngleDeg`. Hull sprite layers are always hull-local and must omit `rotationFrame`; they never use the turret frame. Spinal, propulsion, and utility component layers use the component frame. In a turret definition, fixed layers must omit the field or specify `'component'`; every layer in `rotatingLayers` must explicitly specify `'turret'`.
-
-A built-in exists only when its specific hull installation point explicitly declares its component ID. That declaration implies fixed, non-removable behavior in this initial architecture; no redundant single-valued removal policy is stored. Built-ins occupy their point and have installation source `built-in`; loadout installations have source `loadout`.
-
-### HullDefinition
+### Shared Primitives and Branded IDs
 
 ```ts
-type WeaponConfiguration = 'spinal' | 'turret';
+export type HullPartId = string & { readonly __hullPartId: unique symbol };
+export type HullPointId = string & { readonly __hullPointId: unique symbol };
+export type HullModificationId = string & { readonly __hullModificationId: unique symbol };
+export type ComponentId = string;
+export type SpriteKey = string;
 
-interface WeaponHardpoint {
-  id: string;
-  position: Point2;
-  rotationDeg: number;
-  accepts: readonly WeaponConfiguration[];
-  maxDimensions?: Dimensions;
-  restrictions?: readonly string[];
-  builtInComponentId?: string;
+export interface Point2 {
+    x: number;
+    y: number;
 }
 
-interface ThrusterVent {
-  id: string;
-  position: Point2;
-  rotationDeg: number;
-  width: number;
-  height: number;
-  exhaustDirectionDeg: number;
-  acceptsPropulsionCategories: readonly string[];
-  maxPropulsionOutput?: number;
-  maxComponentDimensions?: Dimensions;
-  builtInComponentId?: string;
-}
-
-interface UtilitySocket {
-  id: string;
-  position: Point2;
-  rotationDeg: number;
-  acceptsCategories: readonly string[];
-  builtInComponentId?: string;
-}
-
-interface HullDefinition {
-  id: string;
-  parts: readonly HullPart[];
-  sprites: readonly SpriteLayer[]; // an empty array is valid
-  weaponHardpoints: readonly WeaponHardpoint[];
-  thrusterVents: readonly ThrusterVent[];
-  utilitySockets: readonly UtilitySocket[];
-  activeModuleMounts: readonly ActiveModuleMount[];
-  hullModCapacity: number;
-}
-```
-
-Hull geometry and points are reusable. `sprites: []` is valid: a hull may define only attachment geometry and acquire its visible appearance from installed components. No required hull sprite is invented. A hardpoint is never intrinsically spinal or turret: it declares accepted configurations. Hardpoint capacity is one. An ordinary point remains empty absent a loadout assignment or explicit built-in.
-
-Every point ID shares one hull-local namespace across weapon hardpoints, thruster vents, utility sockets, and active module mounts. A single validation pass rejects duplicates before either built-ins or loadout installations resolve IDs.
-
-Utility sockets remain minimal authoring points with position, rotation, accepted category, and optional `builtInComponentId`. Additional utility-specific restrictions and runtime behavior are deferred until a concrete utility component requires them.
-
-### ComponentDefinition
-
-```ts
-interface Muzzle {
-  position: Point2;
-  directionDeg: number;
-}
-
-interface WeaponOperation {
-  firingMode: string;
-  damage: number;
-  range: number;
-  cooldown: number;
-  energyCost: number;
-  projectileSpeed: number;
-  splashRadius: number;
-}
-
-interface SpinalWeaponGeometry {
-  muzzles: readonly Muzzle[];
-}
-
-interface TurretWeaponGeometry {
-  pivot: Point2; // component-local pixels
-  rotationLimitsDeg: { min: number; max: number };
-  rotationSpeedDegPerSecond: number;
-  barrels: readonly {
+export interface SpriteLayer {
     id: string;
-    position: Point2; // barrel origin relative to pivot
-    rotationDeg: number; // fixed barrel orientation relative to neutral turret frame
-    muzzles: readonly Muzzle[]; // position/direction relative to this barrel frame
-  }[];
+    textureKey: SpriteKey;
+    textureOrigin?: Point2;
+    position: Point2;
+    rotationDeg?: number;
+    scale?: Point2;
+    rotationFrame?: 'component' | 'turret';
+    order: number;
 }
 
-type WeaponComponentDefinition =
-  | {
-      id: string;
-      kind: 'weapon';
-      configuration: 'spinal';
-      attachment: ComponentAttachment;
-      dimensions?: Dimensions;
-      operation: WeaponOperation;
-      geometry: SpinalWeaponGeometry;
-      visuals: { fixedLayers: readonly SpriteLayer[] }; // component-frame layers
-    }
-  | {
-      id: string;
-      kind: 'weapon';
-      configuration: 'turret';
-      attachment: ComponentAttachment;
-      dimensions?: Dimensions;
-      operation: WeaponOperation;
-      geometry: TurretWeaponGeometry;
-      visuals: {
-        fixedLayers: readonly SpriteLayer[]; // component frame, omitted rotationFrame or 'component'
-        rotatingLayers: readonly SpriteLayer[]; // every layer explicitly sets rotationFrame: 'turret'
-      };
+export interface ComponentAttachment {
+    position: Point2;
+    attachmentRotationDeg: number;
+}
+
+export interface HullPart {
+    id: HullPartId;
+    name: string;
+    position: Point2;
+    rotationDeg: number;
+    isLoot: boolean;
+    maxHull?: number;
+}
+```
+
+`textureOrigin` selects the image point placed at a layer position; its numeric coordinates must be finite without an imposed `[0, 1]` project restriction. `rotationFrame` defaults to `'component'` when omitted.
+
+### HullDefinition — EXISTING Fields (Exact)
+
+```ts
+export interface WeaponHardpoint {
+    id: HullPointId;
+    position: Point2;
+    rotationDeg: number;
+    accepts: readonly ('spinal' | 'turret')[];
+    maxDimensions?: Point2; // EXISTING: Point2, not Dimensions
+    restrictions: Readonly<Record<string, unknown>>; // EXISTING: Record<string, unknown>, not string[]
+    builtInComponentId?: ComponentId;
+}
+
+export interface ThrusterVent {
+    id: HullPointId;
+    position: Point2;
+    rotationDeg: number;
+    width: number;
+    height: number;
+    exhaustDirectionDeg: number;
+    acceptsPropulsionCategories: readonly string[];
+    restrictions: Readonly<Record<string, unknown>>;
+    builtInComponentId?: ComponentId;
+}
+
+export interface UtilitySocket {
+    id: HullPointId;
+    position: Point2;
+    rotationDeg: number;
+    acceptedCategories: readonly string[]; // EXISTING: acceptedCategories, not acceptsCategories
+    restrictions: Readonly<Record<string, unknown>>;
+    builtInComponentId?: ComponentId;
+}
+
+export interface ActiveModuleMount {
+    id: HullPointId;
+    position: Point2;
+    rotationDeg: number;
+    acceptedCategories: readonly string[];
+    restrictions: Readonly<Record<string, unknown>>;
+    builtInComponentId?: ComponentId;
+}
+
+export interface HullDefinition {
+    id: string;
+    parts: readonly HullPart[];
+    sprites: readonly SpriteLayer[];
+    weaponHardpoints: readonly WeaponHardpoint[];
+    activeModuleMounts: readonly ActiveModuleMount[];
+    thrusterVents: readonly ThrusterVent[];
+    utilitySockets: readonly UtilitySocket[];
+    hullModCapacity: number;
+}
+```
+
+**Key existing details:**
+- `WeaponHardpoint.maxDimensions` is `Point2` (not `Dimensions`).
+- Mount `restrictions` are `Readonly<Record<string, unknown>>` (not `readonly string[]`).
+- `ThrusterVent` does **not** have `maxPropulsionOutput` or `maxComponentDimensions`.
+- All point IDs use the branded `HullPointId` type.
+- Point IDs share one hull-local namespace across weapon hardpoints, thruster vents, utility sockets, and active module mounts.
+
+### HullDefinition — PROPOSED Extensions (Not Yet in Source)
+
+```ts
+// PROPOSED: WeaponHardpoint.maxDimensions as Dimensions (with length/width/height)
+// PROPOSED: Mount restrictions as readonly string[]
+// PROPOSED: ThrusterVent.maxPropulsionOutput?: number
+// PROPOSED: ThrusterVent.maxComponentDimensions?: Dimensions
+// PROPOSED: Physical-dimension validation for vents and hardpoints
+```
+
+### ComponentDefinition — EXISTING Fields (Exact)
+
+```ts
+export interface BaseComponentDef {
+    id: ComponentId;
+    operation: {
+        cooldown: number;
+        energyCost: number;
     };
-
-interface PropulsionComponentDefinition {
-  id: string;
-  kind: 'propulsion';
-  category: string;
-  attachment: ComponentAttachment;
-  dimensions?: Dimensions;
-  propulsion: { output: number };
-  sprites: readonly SpriteLayer[];
+    attachment: ComponentAttachment;
+    dimensions?: {
+        length: number;
+        width: number;
+        height: number;
+    };
 }
 
-interface UtilityComponentDefinition {
-  id: string;
-  kind: 'utility';
-  category: string;
-  attachment: ComponentAttachment;
-  dimensions?: Dimensions;
-  sprites: readonly SpriteLayer[];
-}
-
-interface ActiveModuleDefinition {
-  id: string;
-  kind: 'active-module';
-  category: string;
-  operation: {
+export type WeaponOperation = BaseComponentDef['operation'] & {
+    firingMode: string;
+    damage: number;
+    range: number;
     cooldown: number;
     energyCost: number;
-    chargeTime?: number;
-  };
-  payload: {
-    kind: 'resource_restore';
-    shell: number;
-    hull: number;
-    energy: number;
-  };
-  targeting: {
-    kind: 'self' | 'single' | 'area';
-    allowed?: readonly ('Ally' | 'Enemy')[];
-    radius?: number;
-    includeSelf?: boolean;
-  };
-  sprites: readonly SpriteLayer[];
+    projectileSpeed: number;
+    splashRadius: number;
+};
+
+export interface SpinalWeaponDefinition extends BaseComponentDef {
+    kind: 'weapon';
+    configuration: 'spinal';
+    operation: WeaponOperation;
+    visuals: {
+        fixed: readonly SpriteLayer[]; // EXISTING: fixed, not fixedLayers
+    };
+    geometry: {
+        muzzles: readonly {
+            position: Point2;
+            directionDeg: number;
+        }[];
+    };
 }
 
-type ComponentDefinition =
-  | WeaponComponentDefinition
-  | PropulsionComponentDefinition
-  | UtilityComponentDefinition
-  | ActiveModuleDefinition
-  | LegacyComponentDef;
+export interface TurretWeaponDefinition extends BaseComponentDef {
+    kind: 'weapon';
+    configuration: 'turret';
+    operation: WeaponOperation;
+    visuals: {
+        fixed: readonly SpriteLayer[]; // EXISTING: fixed, not fixedLayers
+        rotating: readonly SpriteLayer[]; // EXISTING: rotating, not rotatingLayers
+    };
+    geometry: {
+        pivot: Point2;
+        rotationLimitsDeg: { min: number; max: number };
+        rotationSpeedDegPerSecond: number;
+        barrels: readonly {
+            id: string;
+            position: Point2;
+            rotationDeg: number;
+            muzzles: readonly {
+                position: Point2;
+                directionDeg: number;
+            }[];
+        }[];
+    };
+}
+
+export interface PropulsionComponentDefinition extends BaseComponentDef {
+    kind: 'propulsion';
+    category: string;
+    attachment: ComponentAttachment;
+    dimensions?: { length: number; width: number; height: number };
+    propulsion: { output: number };
+    sprites: readonly SpriteLayer[];
+}
+
+export interface UtilityComponentDefinition extends BaseComponentDef {
+    kind: 'utility';
+    category: string;
+    attachment: ComponentAttachment;
+    dimensions?: { length: number; width: number; height: number };
+    sprites: readonly SpriteLayer[];
+}
+
+export type ActiveModuleOperation = BaseComponentDef['operation'] & {
+    chargeTime?: number;
+};
+
+export type ActiveModuleTargeting =
+    | { kind: 'self' }
+    | { kind: 'single'; allowed: readonly ('Ally' | 'Enemy')[] }
+    | { kind: 'area'; allowed: readonly ('Ally' | 'Enemy')[]; radius: number; includeSelf: boolean };
+
+export type ActiveModulePayload =
+    | { kind: 'resource_restore'; shell: number; hull: number; energy: number };
+
+export interface ActiveModuleDefinition extends BaseComponentDef {
+    kind: 'active-module';
+    category: string;
+    operation: ActiveModuleOperation;
+    payload: ActiveModulePayload;
+    targeting: ActiveModuleTargeting;
+    sprites: readonly SpriteLayer[];
+}
+
+export type ComponentDefinition =
+    | SpinalWeaponDefinition
+    | TurretWeaponDefinition
+    | PropulsionComponentDefinition
+    | UtilityComponentDefinition
+    | ActiveModuleDefinition
+    | LegacyComponentDef;
 ```
 
-`configuration` is authoritative and discriminates weapon geometry/visual fields. No second mounting or geometry configuration flag is maintained. Component dimensions are optional because `PlayerCannon` has no verified physical dimensions; when supplied, they are stored once on the component definition. Spinal local `+X` is longitudinal. There is no separate spinal alignment or geometry-level firing direction: attachment rotation establishes orientation, and each spinal muzzle supplies its direction offset relative to the component-local `+X` axis.
+**Key existing details:**
+- `BaseComponentDef.dimensions`, when provided, requires `length`, `width`, and `height` (not individually optional).
+- `SpinalWeaponDefinition.visuals.fixed` and `TurretWeaponDefinition.visuals.fixed/rotating` use the exact field names.
+- `ActiveModuleTargeting` is a discriminated union with required fields per kind (not all optional).
+- `ComponentDefinition` is a discriminated union of the five variants plus `LegacyComponentDef`.
 
-For a turret, definition limits and angular speed are immutable configuration. Each installed runtime `Component` instance owns its own `turretAngleDeg`; definition reuse never shares this state. The angle is an **unwrapped offset** from neutral turret orientation. Limits and speed must be finite, `min <= max`, span `max - min <= 360`, and speed nonnegative. This 2D azimuth model represents orientation modulo 360 degrees, not cable winding, accumulated revolutions, or a multi-turn actuator; a travel interval larger than 360 would claim behavior this model does not represent. Keep the interval unwrapped so a range crossing conventional zero (for example `[350, 370]`) remains explicit.
-
-Initialize at an equivalent of zero inside the permitted interval if one exists: choose a value `360k` in `[min, max]` with the smallest absolute value, breaking an exact tie toward the lower value. For example, `[350, 710]` initializes at `360`, physically equivalent to `0`. If no multiple of 360 lies in the interval, compare the boundaries by their minimum angular distance to any multiple of 360: `distance(a) = min over integer k of |a - 360k|`. Choose the boundary with smaller distance and break a tie toward the lower boundary. Thus `[340, 350]` initializes at `350`, `[-350, -340]` at `-350`, and `[10, 20]` at `10`; an interval with no zero-equivalent starts at its nearest mechanical stop, not at a neutral orientation. Thereafter clamp directly to the unwrapped interval without wrapping runtime angles.
-
-`rotationLimitsDeg` constrain mechanical `turretAngleDeg`, not world-space muzzle direction. Fixed barrel and muzzle direction offsets add to bore direction but do not expand mechanical travel. For a desired world bore direction, future aiming logic may derive `θrequired = θdesiredWorld - θcomponent - β - μ`, then consider equivalent candidates `θrequired + 360k` that lie in the unwrapped mechanical interval before applying the limits. It must not blindly clamp a wrapped target angle without considering equivalent orientations. This describes a future calculation only; no aiming logic is part of this proposal. Fixed visual layers remain in component coordinates. Turret-frame sprite layers and barrels rotate around the configured pivot by the instance angle; muzzle coordinates/directions are barrel-local.
-
-### ShipLoadout and ShipBlueprint
+### ComponentDefinition — PROPOSED Extensions (Not Yet in Source)
 
 ```ts
-interface ShipLoadout {
-  id: string;
-  installations: readonly {
-    mountId: string;
-    componentId: string;
-  }[];
+// PROPOSED: behaviorId?: string; behaviorConfig?: Record<string, unknown> on weapon definitions
+// PROPOSED: Weapon-side mount requirement fields (narrowing, not overriding WeaponHardpoint.accepts)
+// PROPOSED: Additional component categories beyond the existing five
+```
+
+### ShipLoadout and ShipBlueprint — EXISTING (Exact)
+
+```ts
+export interface InstallationRecord {
+    mountId: HullPointId; // EXISTING: HullPointId, not string
+    componentId: ComponentId;
 }
 
-interface ShipBlueprintDefinition {
-  hullId: string;
-  loadoutId: string;
-  superType: string;
-  subType: string;
-  name: string;
-  categoryType: string;
-  stats: ShipBlueprintStats;
+export interface ShipLoadout {
+    id: string;
+    installations: readonly InstallationRecord[];
+}
+
+export interface ShipBlueprintStats {
+    maxHull: number;
+    maxShell: number;
+    regenShell: number;
+    maxEnergy: number;
+    regenEnergy?: number;
+    maxSpeed: number;
+    acceleration: number;
+    weight: number;
+    radius: number;
+    value: number;
+}
+
+export interface ShipBlueprintDefinition {
+    hullId: string;
+    loadoutId: string;
+    superType: string;
+    subType: string;
+    name: string;
+    categoryType: string;
+    stats: ShipBlueprintStats;
 }
 ```
+
+**Key existing detail:** `InstallationRecord.mountId` is `HullPointId` (branded).
 
 `ShipBlueprintDefinition.hullId` is the sole authoritative hull reference. `loadoutId` identifies component installations, and `ShipLoadout` contains only its own ID and explicit assignments; it does not select a hull. Interpret each loadout against the hull selected by the referencing blueprint. An empty installation list is valid. The blueprint retains ship identity/classification and all existing ship-specific stats; different blueprints/loadouts may reuse one hull without duplicating geometry. Catalogue `id` and `sourceKey` remain on the `ShipBlueprint` wrapper, not in this plain definition.
 
@@ -407,6 +479,34 @@ R(θ) = [ cos(θ)  -sin(θ) ]
 
 With this screen-space convention, positive 90 degrees maps local right `(1, 0)` to screen-down `(0, 1)`. This is consistent with the existing projectile trigonometry and is not a convention change.
 
+---
+
+### Current Runtime Contract — Mount-Local Attachment (Implemented)
+
+The shared `WeaponTransform.resolveWeaponMuzzles()` (used by both `Weapon.resolveMuzzles()` and `ManagedWeapon.fireArcadeProjectile()`) operates on a **mount-local attachment** convention:
+
+- `mount.position` / `mount.rotationDeg`: position and rotation of the hardpoint in **ship-local** coordinates
+- `attachment.position` / `attachment.rotationDeg`: position and rotation of the component's attachment datum in **mount-local** coordinates
+- `muzzle.position` / `muzzle.directionDeg`: position and direction in **component-local** coordinates
+
+The transform computes:
+```text
+componentDirectionDeg = ship.rotationDeg + mount.rotationDeg + attachment.rotationDeg
+componentWorld = ship + R(ship.rotationDeg) * mount.position + R(ship.rotationDeg + mount.rotationDeg) * attachment.position
+Pmuzzle = componentWorld + R(componentDirectionDeg) * muzzle.position
+θmuzzle = componentDirectionDeg + muzzle.directionDeg
+```
+
+**Contract:** hardpoint defines the ship→mount transform; attachment defines the mount→component transform; component geometry (muzzles, barrels) is defined in component-local coordinates.
+
+The existing weapon-transform tests verify this mount-local contract at cardinal angles (0°, 90°, 180°, 270°), parent-to-child composition, multiple muzzle order/direction, and empty-muzzle fallback.
+
+---
+
+### Proposed Target Contract — Component-Local Attachment Datum (Not Yet Implemented)
+
+The proposed architecture intends a **component-local attachment datum** convention for authoring:
+
 For ship world position `Ps`, ship rotation `θs`, hull-local hardpoint position `H`, hardpoint rotation `φh`, component-local attachment datum `A`, and `attachmentRotationDeg = α`:
 
 ```text
@@ -448,9 +548,17 @@ direction = (cos(θexhaustWorld), sin(θexhaustWorld))
 
 No propulsion movement is derived from this data during prerequisite refactoring.
 
-## PlayerCannon Migration and Behavior Preservation
+---
 
-The existing player definition becomes a `ShipBlueprintDefinition` referencing an explicit player `HullDefinition` and player `ShipLoadout`. The hull has one explicitly defined hardpoint at `(0, 0)`, rotation `0`, compatible with spinal weapons. The player loadout assigns `PlayerCannon` to that point. It is not a built-in; other points remain empty. The player keeps its current explicit hull and visual composition, migrated into hull sprite layers without copying image assets.
+### Migration Requirement
+
+**Current runtime compatibility requires mount-local semantics.** The existing `WeaponTransform` tests do **not** verify the proposed target convention. The proposed component-local attachment datum equations describe the intended authoring target; implementing them requires a transform migration in `WeaponTransform.ts` and corresponding test updates. Until that migration is implemented and approved, authoring tools must produce mount-local attachment data for runtime compatibility.
+
+The Lua authoring and editor-preview sections refer to the intended target convention only when that migration is available. Do not claim that current runtime and future authoring behavior are already identical.
+
+## Completed PlayerCannon Migration — Canonical Registration and Visual Composition Status
+
+The existing player definition becomes a `ShipBlueprintDefinition` referencing an explicit player `HullDefinition` and player `ShipLoadout`. The hull has one explicitly defined hardpoint at `(0, 0)`, rotation `0`, compatible with spinal weapons. The player loadout assigns `PlayerCannon` to that point. It is not a built-in; other points remain empty.
 
 `PlayerCannon` becomes a spinal `WeaponComponentDefinition`:
 
@@ -468,7 +576,14 @@ The existing player definition becomes a `ShipBlueprintDefinition` referencing a
 | Attachment position/rotation | `(0, 0)` / `0°` |
 | Muzzle position/direction | `(0, 0)` / `0°` |
 
-Current part coordinates are multiplied by five in `Ship.init()` and then rotated by ship angle. The player's part offset is `(0,0)`, so its current firing origin is the ship center at every angle. Under the proposed model, zero attachment and muzzle offsets preserve that origin without applying legacy part offsets twice.
+**Implementation status of PlayerCannon migration:**
+
+- **Canonical registration: COMPLETE** — `Game.loadGameData()` registers the player `HullDefinition`, `PlayerCannon` `ComponentDefinition`, and player `ShipLoadout` in `Game`'s canonical registries. The player ship is initialized through `Ship.initCanonicalBlueprint()` using `hullId`/`loadoutId` resolution.
+- **Player hull: `sprites: []`** — The registered player hull currently has an empty sprite array. Visual composition has **not** been migrated into hull sprite layers.
+- **PlayerCannon visuals: `fixed: []`** — The registered `PlayerCannon` component has an empty fixed visual layers array.
+- **PlayerCannon muzzles: `[]`** — The registered `PlayerCannon` component has an empty muzzles array. The origin muzzle at fire time is supplied by `WeaponTransform.resolveWeaponMuzzles()` empty-array fallback (`{ position: {0,0}, directionDeg: 0 }`).
+- **Visual composition: NOT MIGRATED** — The player's visual composition still uses the legacy path in `main.ts` (scene-owned container synchronized to logical ship). The deterministic sprite composition helper and Ship-owned Phaser display-object lifecycle remain **proposed prerequisite work**, not implemented.
+- **Coordinates are canonical pixels, not legacy ×5** — The canonical `PlayerCannon` definition uses `attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 }` and `muzzles: []` in **local pixels**. The legacy `×5` scaling occurs exactly once in `Ship.initLegacyTuple()` and `ShipDataAdapter.ingestLegacyData()` for unconverted legacy tuples only. Canonical definitions do not apply the ×5 factor.
 
 | `Ship.rotation` | Current and proposed muzzle origin | Ship-forward direction | 600-speed muzzle vector before inherited shooter velocity |
 |---:|---|---|---|
@@ -503,35 +618,48 @@ The generated manifest contains the public component, ship, and turret/platform 
 
 `index.html` is a Vite app shell with `#app` and `/src/main.ts`; `main.ts` boots Phaser scenes. Workspace search found no current `/shipmaker` route or Shipmaker implementation. The package declares Phaser `^4.2.1`, Vite scripts, `npm test` (`tsx --test`), and `npm run build`. The `prebuild` script regenerates the SVG manifest.
 
-## Prerequisite Refactoring Proposal
+## Prerequisite Refactoring Proposal — Reconciled with Implementation State
 
-This is the minimum proposed code scope. It is not authorized by the presence of this document. Keep `ProjectileManager`, `EntityManager`, and `ObjectPool` responsibilities intact; do not add `WeaponManager` or another registry.
+This section distinguishes between **already implemented foundations** and **remaining integration work**. The implementation at `d3325d2` (identical code to `74c6821`) has already completed the core data-model migration. Do not re-implement these foundations.
 
-| File | Current responsibility | Proposed change and compatibility strategy | Main regression risk |
-|---|---|---|---|
-| [ShipBlueprint.ts](../src/managers/ShipBlueprint.ts) | Blueprint and legacy tuple types; catalogue entry resolves structured definition or `Game.shipData`. | Add `HullDefinition`, `ComponentDefinition`, and `ShipLoadout` types; make blueprint reference hull/loadout while retaining a legacy definition projection. | Breaking existing structured/debug/test blueprint consumers. |
-| [ShipManager.ts](../src/managers/ShipManager.ts) | Catalogue registration and ordinary create/dispose orchestration. | Resolve/validate blueprint hull and loadout data through existing catalogue/owner; retain method boundaries and spawn/disposal behavior. | Source-key lookup or pooling lifecycle mismatch. |
-| [Game.ts](../src/core/Game.ts) | Owns current inline game data, player cannon tuple, player blueprint, queues, and frame/system orchestration. | Make current player/hull/component/loadout data canonical typed records while keeping the legacy registries as adapters where needed. No new manager or movement behavior. | Duplicate registries, altered player stats, or spawn queue behavior. |
-| [Ship.ts](../src/entities/Ship.ts) | Applies blueprint stats, builds parts/components from structured or legacy tuples, and owns logical ship state/movement. | Resolve hull/loadout; materialize built-ins/installations; resolve initial composition descriptors during `init()`; own the composed Phaser display objects and cleanup; expose Ship-owned add/remove operations that refresh composition. Retain movement and logical lifecycle code. | Part coordinates scaled twice, missing components on pooled reuse, shared turret state, or altered stats. |
-| [Component.ts](../src/entities/Component.ts) | Initializes tuple-defined component behavior and cooldown/energy; stores ship/part references. | Retain typed definition, installation metadata, per-instance turret angle, and mount transform access; do not share runtime state between installs. | Cooldown/energy regressions or shared turret state. |
-| [Weapon.ts](../src/weapons/Weapon.ts) | Loads weapon tuple and handles firing mode/fallback firing. | Use resolved muzzle position and direction for fallback firing, retaining existing operation values and behavior. | Coordinate sign/unit drift or fallback projectile differences. |
-| [ManagedWeapon.ts](../src/weapons/ManagedWeapon.ts) | Captures shooter velocity/attribution and delegates projectile spawn. | Use the same resolved muzzle transform as `Weapon`; continue delegating lifecycle to `ProjectileManager`. | Duplicate offset application or lost attribution/velocity inheritance. |
-| [main.ts](../src/main.ts) | Owns Phaser scene, player container/body, player sync/input, and debug NPC visual containers. | Supply/attach the scene and existing player body/input integration to Ship-owned composition; preserve player queue separation and debug/NPC lifecycle without owning composed sprite cleanup. | Phaser radians/degrees confusion, changed player setup, visual ownership leaks, or implying a general NPC renderer. |
+### Implemented Foundations (do not re-implement)
 
-`ModularHull.ts` should not be migrated or deleted: no current runtime use was found, and its section-level damage/hardpoint behavior differs from the proposed generic configuration points. The existing `publicSvgManifest.ts` remains generated output; modify the generator or asset loader only if an approved implementation establishes a real missing capability. Do not edit `EntityManager.ts`, `ProjectileManager.ts`, or `ObjectPool.ts` absent new evidence that the required behavior cannot fit their present responsibilities.
+| File | Current responsibility (implemented) | Verification |
+|---|---|---|
+| [ShipBlueprint.ts](../src/managers/ShipBlueprint.ts) | Blueprint catalogue with `id`/`sourceKey`; structured definitions include `hullId`/`loadoutId` canonical shape; `syncFromGame()` indexes legacy tuples. | `ship-blueprint.test.ts` — player catalogue registration, legacy tuple catalogue/init. |
+| [ShipManager.ts](../src/managers/ShipManager.ts) | Blueprint registration, `createShip()`/`disposeShip()` centralized; resolves blueprint `hullId`/`loadoutId` through `Game` registries. | `ship-lifecycle.test.ts` — registration/queue/disposal/pooling; `ship-blueprint.test.ts` — source-key lookup. |
+| [Game.ts](../src/core/Game.ts) | Owns canonical registries: `hullDefinitions`, `componentDefinitions`, `shipLoadouts`, `legacyCompatibilityViews`, `hullModificationDefinitions`; player hull/loadout registered in `loadGameData()`. | `ship-blueprint.test.ts` — player stats/components, canonical hull/loadout path. |
+| [Ship.ts](../src/entities/Ship.ts) | `initCanonicalBlueprint()`: resolves hull/loadout via `Game`; builds parts from `HullDefinition`; materializes built-ins (validates, reserves point, `installationSource: 'built-in'`); installs loadout components (validates mount exists, component exists, compatibility); legacy paths (`initStructuredLegacyBlueprint`, `initLegacyTuple`) translate tuples and scale `×5` once. | `ship-blueprint.test.ts` — player runtime ship, stats, parts, components; `shipmaker-parity.test.ts` — canonical geometry, built-ins, invalid mounts, legacy coordinate conversion, legacy compatibility views. |
+| [Component.ts](../src/entities/Component.ts) | `applyDefinition()`: typed `ComponentDefinition` → `effect` (`ManagedWeapon`/`Weapon`), `activeModuleRuntime`; stores `installationSource`, `fixed`, per-instance `turretAngleDeg`. | `shipmaker-parity.test.ts` — canonical PlayerCannon, built-in fixed/loadout distinction; `player-weapon.test.ts` — activation, cooldown, energy, attribution. |
+| [Weapon.ts](../src/weapons/Weapon.ts) | `resolveMuzzles()` uses shared `WeaponTransform.resolveWeaponMuzzles()` for fallback `PhysicsProjectile` path; canonical definition provides `spinalWeaponDefinition`. | `weapon-transform.test.ts` — transform composition at cardinal angles; `player-weapon.test.ts` — legacy fallback firing. |
+| [ManagedWeapon.ts](../src/weapons/ManagedWeapon.ts) | Delegates to `ProjectileManager.spawn()` with shared `WeaponTransform` resolution; captures `sourceEntityId`/`sourceFactionId` at fire time; velocity inheritance. | `player-weapon.test.ts` — managed multi-muzzle, attribution, velocity inheritance, energy/cooldown. |
 
-### Migration Order
+`ModularHull.ts` is isolated (no runtime use) — leave unchanged. `publicSvgManifest.ts` is generated output — modify generator only when approved. `EntityManager`, `ProjectileManager`, `ObjectPool` — no changes needed.
 
-1. Introduce typed definitions and a runtime validator/conversion boundary without removing existing definitions.
-2. Express the player hull and `PlayerCannon` as typed records and an explicit player default loadout; preserve player stats, visuals, energy/cooldown, muzzle transform, and managed projectile behavior.
-3. Adapt `Ship.init()` to build installed components from hull plus loadout while translating legacy tuples and scaling legacy part coordinates exactly once.
-4. Resolve weapon origins through one shared transform for fallback and managed firing; keep the projectile manager API/ownership unchanged.
-5. Adapt existing player/debug composition to render hull/component sprite groups. Do not claim ordinary NPC rendering support.
-6. Keep adapters until tests demonstrate existing structured and tuple definitions still work; only remove legacy support in a separately approved migration.
+### Remaining Integration Work (requires explicit approval)
+
+| Area | Work |
+|---|---|
+| **Runtime validation & conversion boundary** | TypeScript types don't validate at runtime. Need validator/converter for imported/editor-authored definitions (schema + cross-ref: hullId exists, loadoutId exists, mountId in hull, componentId exists). |
+| **Remaining legacy migration** | Migrate all structured/legacy blueprints (beyond player) to canonical `hullId`/`loadoutId`; `ShipDataAdapter.ingestLegacyData()` projects tuples but unconverted ships still use legacy path. Migration order in table below. |
+| **Deterministic sprite composition helper** | Pure function producing visual descriptors from hull + component installations + per-instance turret state (no Phaser); used once in `Ship.init()`; not recomputed per frame. |
+| **Ship-owned Phaser display-object lifecycle** | Ship owns composed display objects; scene provides attachment/body context; `main.ts` currently creates player/debug visuals. Preserve player/NPC lifecycle boundaries. |
+| **Scene integration** | Connect Ship-owned composition to Phaser scene without merging player/NPC update/render/cleanup paths. |
+| **External Lua parsing, loading, validation, persistence** | Restricted Lua subset, shared browser/Node parser, dev-server Save & Apply middleware, hot-reload, production build pipeline. See Revised Implementation Phases 2–5. |
+
+### Migration Order (remaining)
+
+1. **Runtime validator/conversion boundary** for imported/editor-authored records (separate from TypeScript types).
+2. **Complete legacy migration** for all structured/legacy blueprints: convert each ship tuple to canonical `HullDefinition` + `ShipLoadout` + `ShipBlueprintDefinition`; register in `Game` registries; `ShipDataAdapter` projects unconverted tuples until individually migrated.
+3. **Deterministic sprite composition helper** (pure, no Phaser) and **Ship-owned display-object lifecycle** (attachment, cleanup, add/remove operations refresh composition).
+4. **Scene integration** for player/debug ships: supply scene context to Ship composition; preserve player queue separation; do not imply general NPC renderer.
+5. **Keep adapters** until tests verify parity for all structured and tuple definitions; remove legacy support in separately approved migration.
+
+The Lua parser and Shipmaker editor phases remain separate from these runtime foundations.
 
 ## Regression Test Matrix
 
-### Existing Tests and Their Present Coverage
+### Existing Core Tests (Implemented, Verified)
 
 | Existing file | Verified coverage in current suite |
 |---|---|
@@ -541,10 +669,19 @@ This is the minimum proposed code scope. It is not authorized by the presence of
 | [ship-lifecycle.test.ts](../tests/ship-lifecycle.test.ts#L42) | ShipManager registration/queue/disposal/pooling; legacy component rebuild; debug blueprint texture keys and lifecycle. |
 | [public-svg-manifest.test.ts](../tests/public-svg-manifest.test.ts#L26) | SVG discovery, Planet exclusion, deterministic keys/URLs, aliases, collisions, and unchanged manifest writes. |
 | [faction-manager.test.ts](../tests/faction-manager.test.ts#L617) | Shared ship queue, faction-aware targeting/relationships, spawn lifecycle, and disposal interactions. |
+| [shipmaker-parity.test.ts](../tests/shipmaker-parity.test.ts#L18) | Legacy coordinate conversion (×5), canonical geometry, built-ins, invalid mounts, compatibility views. |
+| [weapon-transform.test.ts](../tests/weapon-transform.test.ts#L18) | Transform composition at cardinal angles (0°, 90°, 180°, 270°); parent-to-child composition; multiple muzzle order/direction; empty muzzle-array origin fallback. |
 
 These are not tests of the proposed editor/configuration architecture. Current test harnesses often bypass Phaser scene construction, so browser/render behavior remains unverified by these unit tests.
 
-### Required Tests for Prerequisite Refactoring
+**Already covered by existing tests (do not re-add):**
+- Legacy ×5 coordinate conversion (shipmaker-parity)
+- Built-in reservation vs loadout distinction (shipmaker-parity)
+- PlayerCannon canonical values and activation/cooldown/energy semantics (player-weapon)
+- WeaponTransform resolution at cardinal angles, composition order, multiple muzzles, empty-array fallback (weapon-transform)
+- ProjectileManager pool, cleanup, collision, attribution, velocity/direction, lifespan (projectile-manager)
+
+### Required Tests for Prerequisite Refactoring (Runtime Foundations)
 
 | Area | Required assertions |
 |---|---|
@@ -552,16 +689,18 @@ These are not tests of the proposed editor/configuration architecture. Current t
 | Generic hardpoints | Empty is valid; spinal-only, turret-only, and dual-compatible hardpoints accept correct configurations; incompatible assignments reject. |
 | Validation | One duplicate-ID pass covers weapon points, vents, utility sockets, and active module mounts; the same namespace resolves built-ins and loadouts; unresolved IDs, duplicate assignments, invalid dimensions/angles/output, and sprite references are reported. |
 | Built-ins | No built-in is synthesized; each `builtInComponentId` resolves from `Game.componentDefinitions`, validates against its exact point, is instantiated independently of an empty loadout, occupies/reserves the point, has source `built-in`, and rejects loadout replacement. |
-| Component state/visuals | Two turret instances share definition but not angle; component-frame layers remain fixed; turret-frame layers explicitly rotate around the component-local pivot; limits/speed are finite, ordered, span at most 360°, `[350, 710]` initializes at `360°`, `[340, 350]` at `350°`, `[-350, -340]` at `-350°`, and `[10, 20]` at `10°`; angles stay unwrapped and muzzle offsets do not affect mechanical limits. |
-| Weapon transforms | Spinal attachment axis and per-muzzle direction; turret pivot-local barrel position, fixed barrel rotation, barrel-local muzzle position/direction, and world bore direction; offsets tested at nonzero ship/hardpoint rotations and at `0°`, `90°`, `180°`, `270°`. |
+| Component state/visuals | Two turret instances share definition but not angle; component-frame layers remain fixed; turret-frame layers explicitly rotate around the component-local pivot; limits/speed are finite, ordered, span at most 360°, `[350, 710]` initializes at `360°`, `[340, 350]` at `350°`, `[-350, -340]` at `-350°`, and `[10, 20]` at `10°`; angles stay unwrapped and muzzle offsets do not affect mechanical limits. **NEW: Turret mechanical-limit clamping/aiming/transforms not yet implemented — these assertions describe required behavior once implemented.** |
+| Weapon transforms | Spinal attachment axis and per-muzzle direction; turret pivot-local barrel position, fixed barrel rotation, barrel-local muzzle position/direction, and world bore direction; offsets tested at nonzero ship/hardpoint rotations and at `0°`, `90°`, `180°`, `270°`. **NEW: Turret transforms require full pivot/barrel/muzzle resolution — currently only spinal path is implemented.** |
 | Dimensions | Optional dimensions pass unconstrained points; empty supplied dimension/maximum objects reject; any active projected in-plane maximum requires both finite positive length and width; a height-only maximum requires only finite nonnegative height; partial maxima compare only specified axes; size projection does not claim containment/clearance for off-center datums. |
-| Thrusters | Vent/category compatibility; built-in assignment resolves from canonical component data even for an empty loadout; output rejects NaN, infinity, and negatives regardless of cap; optional finite cap accepts equal/lower and rejects greater output; dimensions are checked against the opening and separate envelope; exhaust rotates with ship and vent. Movement output remains unchanged. |
+| Thrusters | Vent/category compatibility; built-in assignment resolves from canonical component data even for an empty loadout; output rejects NaN, infinity, and negatives. **Proposed (not yet implemented):** output cap enforcement, dimension checks against vent opening and component envelope. Exhaust visual rotation with ship/vent is metadata only. Movement output remains unchanged. |
 | Legacy migration | Existing structured and tuple ships initialize; unconverted ship/component tuples remain authoritative and are projected without a duplicate cache; migrated records switch to Game-owned typed data; legacy part `×5` conversion occurs exactly once; pooled reuse rebuilds per-instance state. |
 | Player cannon | Values, cooldown/energy semantics, origin/direction at four cardinal rotations, shooter-velocity inheritance, source/faction attribution, projectile pool/collision/cleanup remain unchanged. Preserve `range`/`splashRadius` data without adding absent gameplay mechanics. |
 | Lifecycle | Player stays outside managed NPC queue and retains scene/input cleanup; NPC predefined loadout remains on ShipManager/queue lifecycle; Ship owns composition display objects while scenes provide their attachment/body context. |
 | Rendering/assets | Empty hull sprite arrays are valid; hull/component layer IDs are definition-local with the reserved `legacy:` prefix unavailable to canonical IDs; layer orders may repeat; the five-key source/point/component/order/layer-ID sort is deterministic; the pure helper resolves once during `Ship.init()`; Ship owns display-object cleanup; turret changes update only rotating groups; Ship-owned add/remove refreshes composition; manifest keys validate without BootScene. |
 
-### Additional Future Shipmaker Tests
+**Note:** Items marked **NEW** above are not covered by existing tests and must be added as part of the prerequisite refactoring. Items not marked NEW are either already covered by existing tests (see "Already covered by existing tests" above) or describe behavioral requirements that must be verified once the implementation exists.
+
+### Additional Future Shipmaker Tests (Editor/Configuration Architecture)
 
 | Area | Required assertions |
 |---|---|
@@ -623,10 +762,12 @@ Shipmaker is a developer-only authoring tool at `/shipmaker`, not gameplay UI. C
 
 - Select/edit hull identity, sprite layers, layer order, origin, scale, rotation, pan/zoom, grid, optional snapping, and numeric coordinates.
 - Place generic weapon hardpoints and select spinal/turret/both compatibility, restrictions, and optional size limits.
-- Place thruster vents with opening geometry, local exhaust direction, accepted categories, optional output cap, optional component envelope, and explicit optional fixed built-in.
+- Place thruster vents with opening geometry, local exhaust direction, accepted categories, **proposed** optional output cap, **proposed** optional component envelope, and explicit optional fixed built-in.
 - Place utility sockets with category acceptance and optional fixed built-ins.
 - Place active module mounts with category acceptance and optional fixed built-ins.
 - Display point occupancy and never make an ordinary hardpoint typed as permanently spinal or turret.
+
+**Coordinate convention:** Authoring targets the **proposed component-local attachment datum** convention. Current runtime requires mount-local attachment data until the WeaponTransform migration is implemented. Editor preview must translate between conventions or target the future runtime once migrated.
 
 ### Component Authoring and Preview
 
@@ -634,8 +775,10 @@ Shipmaker is a developer-only authoring tool at `/shipmaker`, not gameplay UI. C
 - Author spinal muzzles/directions and fixed layers; author turret pivot, limits, speed, barrels, muzzles, fixed layers, and rotating layers.
 - Author propulsion category, finite nonnegative output, optional physical dimensions, and independent sprites.
 - Author utility and active module categories with independent sprites.
-- Preview component alignment, fixed/rotating groups, occupied/unoccupied hull points, and the same component transforms as gameplay.
+- Preview component alignment, fixed/rotating groups, occupied/unoccupied hull points, and the **proposed target** component transforms (component-local attachment datum convention).
 - No aiming AI, combat automation, movement simulation, or gameplay entities in editor preview.
+
+**Coordinate convention:** Authoring targets the **proposed component-local attachment datum** convention. Current runtime uses mount-local attachment data. Editor preview must translate between conventions or target the future runtime once the WeaponTransform migration is implemented.
 
 ## Lua Data Organization
 
@@ -657,7 +800,9 @@ Inspect the existing contracts in `src/types/Shipmaker.ts` before deciding exact
 
 ## Lua Source Location and Data Loading Architecture
 
-The proposed authoritative Lua source location is:
+**Placeholder:** `DATA_ROOT` denotes the authoritative Lua authoring root. The currently proposed development location is `public/data/`. This placeholder is used throughout phase descriptions, browser/Node responsibilities, development workflow, Save & Apply, and editor persistence destinations. The production distribution decision remains unresolved (see "Important: Production Distribution of Lua Source" below).
+
+The **proposed** authoritative Lua authoring location during development is:
 
 ```
 public/data/
@@ -677,13 +822,15 @@ public/
 
 These are separate data domains, not one combined definition file.
 
-The documentation should explain why `public/data/` is preferred for the authoritative Lua source files:
+The documentation should explain why `public/data/` is a viable development location for Lua source files:
 
-- Vite serves public assets directly.
-- The browser can retrieve the definitions through HTTP requests.
-- The local development server can access these files for Shipmaker persistence.
+- Vite serves public assets directly during development.
+- The browser can retrieve the definitions through HTTP requests in dev.
+- The local development server can access these files for Shipmaker persistence (Save & Apply).
 - The data remains separate from TypeScript gameplay implementation.
 However, do not assume that Phaser can execute or interpret Lua files natively.
+
+**Important:** The production distribution decision remains unresolved (see "Important: Production Distribution of Lua Source" below). If Alternative 3 is chosen, the authoritative source moves outside `public/` (e.g., `data/` at repo root) and is exposed only via the dev server endpoint. Do not describe `DATA_ROOT` as irrevocably settled while alternatives remain open. **All phase descriptions that reference `DATA_ROOT` are qualified as the proposed development authoring location, not a final decision.**
 
 ### Important: Production Distribution of Lua Source
 
@@ -693,8 +840,8 @@ Vite normally copies the entire `public/` directory into the production output u
 
 | Alternative | Description | Implications |
 |---|---|---|
-| **Include Lua source in production** | Ship `public/data/` as-is to production. | Simple; Lua files publicly downloadable and inspectable. Source contents may reveal ship statistics, weapon balance values, and unreleased game content — not merely the authoring structure. No runtime execution risk since the browser does not execute Lua. |
-| **Exclude Lua source from production** | Configure a custom build strategy to omit `public/data/` while retaining other public assets (e.g., a Vite plugin that filters the public directory copy, or a post-build cleanup step). Vite's `build.copyPublicDir: false` disables copying the entire public directory; it cannot selectively exclude a subdirectory. | Cleaner production bundle; requires custom build config. Source remains only in repo. |
+| **Include Lua source in production** | Ship `DATA_ROOT` as-is to production. | Simple; Lua files publicly downloadable and inspectable. Source contents may reveal ship statistics, weapon balance values, and unreleased game content — not merely the authoring structure. No runtime execution risk since the browser does not execute Lua. |
+| **Exclude Lua source from production** | Configure a custom build strategy to omit `DATA_ROOT` while retaining other public assets (e.g., a Vite plugin that filters the public directory copy, or a post-build cleanup step). Vite's `build.copyPublicDir: false` disables copying the entire public directory; it cannot selectively exclude a subdirectory. | Cleaner production bundle; requires custom build config. Source remains only in repo. |
 | **Move authoritative source outside `public/`** | Keep authoritative Lua under e.g. `data/` (repo root) and expose via dev server endpoint only. | Cleanest separation; dev server reads/writes `data/`; production build reads `data/` at build time, never ships source. Requires dev server middleware and build script changes. |
 
 **Do not unilaterally change the proposed source location.** Record the alternatives and their implications here. The decision affects dev server design, build pipeline, and whether production clients can fetch Lua over HTTP.
@@ -706,7 +853,7 @@ The division of labor between browser and Node environments must be explicit. **
 | Responsibility | Environment | Notes |
 |---|---|---|
 | **Lua parsing, schema validation, typed runtime conversion** | **Browser-safe TypeScript** (bundled into Phaser runtime) | Must not use Node APIs (`fs`, `path`, etc.). Runs in browser during development to load definitions from HTTP responses. **Shares the same parser/validator core as Node.** |
-| **Development-server file read/write (Save & Apply)** | **Node (Vite dev middleware / custom endpoint)** | `fs` access to `public/data/`; invokes shared parser/validator core before write; triggers hot-reload. Never bundled into browser. |
+| **Development-server file read/write (Save & Apply)** | **Node (Vite dev middleware / custom endpoint)** | `fs` access to `DATA_ROOT`; invokes shared parser/validator core before write; triggers hot-reload. Never bundled into browser. |
 | **Build-time parsing and production-ready data generation** | **Node (build script / Vite plugin)** | Runs at `npm run build`; reads authoritative Lua via `fs`, invokes shared parser/validator core, emits runtime-ready JSON/TS modules for production bundle. |
 
 The browser must not directly access the filesystem. Do not put filesystem write functionality into the Phaser runtime bundle. **Do not introduce two independently maintained parsers that might produce different interpretations of the same Lua definitions.** Separate environment-specific I/O (HTTP `fetch` in browser, `fs` in Node) from the shared parsing and validation logic.
@@ -714,7 +861,7 @@ The browser must not directly access the filesystem. Do not put filesystem write
 **Development-only security boundaries for the Save & Apply endpoint:**
 - Localhost-only binding (bind to `127.0.0.1`, not `0.0.0.0`). This is separate from origin validation.
 - Origin/request validation: verify the `Origin` header and `Host` header match the actual configured development-server origin (e.g., `http://localhost:5173`). **Do not use wildcard matching** such as `http://localhost:*`. Reject requests with unexpected or missing origins/hosts.
-- Path restrictions: canonicalize and verify target path stays within `public/data/` (or `data/` if Alternative 3 chosen); reject path traversal (`..`, symlinks).
+- Path restrictions: canonicalize and verify target path stays within `DATA_ROOT` (or `data/` if Alternative 3 chosen); reject path traversal (`..`, symlinks).
 - HTTP method restriction: `POST`/`PUT` only; no `GET` for writes.
 - Request body validation: parse as Lua data format, validate schema before write.
 - No arbitrary Lua execution: parser must be restricted/data-oriented.
@@ -738,13 +885,13 @@ Do not introduce a parallel registry or duplicate existing manager responsibilit
 
 During development:
 
-1. The game retrieves definitions from `public/data/` via HTTP.
+1. The game retrieves definitions from `DATA_ROOT` via HTTP.
 2. The browser-safe loading infrastructure parses and validates them.
 3. Validated definitions become available to the existing runtime registries.
 4. Shipmaker retrieves existing definitions for editing (via HTTP).
 5. Shipmaker validates modifications and previews the changes.
 6. After explicit confirmation, Shipmaker calls the development-server Save & Apply endpoint (Node middleware).
-7. The endpoint validates, writes updated Lua source files to `public/data/`, and signals reload.
+7. The endpoint validates, writes updated Lua source files to `DATA_ROOT`, and signals reload.
 8. The development environment reloads the affected definitions (hot-reload) or restarts the game when necessary.
 
 ### Production workflow
@@ -763,11 +910,23 @@ The editor must retrieve, modify, validate, save, and apply Lua definitions.
 
 JSON export followed by manual copying must no longer be the primary persistence workflow. JSON may still be used internally for interchange, debugging, or backups.
 
+**Persistence test expectations:**
+
+Ordinary preview, validation, import, and export operations must not silently modify source files. They operate on in-memory representations only.
+
+**Explicit Save & Apply is the intentional exception:**
+
+- Requires explicit user confirmation (e.g., a modal "Save Changes" action).
+- Validates the complete change set before any write (schema + cross-reference checks).
+- Writes only approved Lua definition files to the authorized directory (`DATA_ROOT` or `data/` per distribution decision).
+- Rejects out-of-scope paths (path traversal, symlinks, directories outside allowlist).
+- Failed validation or failed writes must not leave partial modifications (atomic write, `.bak` retention, rollback).
+
 Document a safe Save & Apply design covering:
 
-- Localhost-only development access.
+- Localhost-only development access (bind to `127.0.0.1`, not `0.0.0.0`).
 - A development-server endpoint or middleware for file operations (Node-only, never bundled).
-- Strict write access to approved `public/data/` directories (or `data/` if Alternative 3 chosen).
+- Strict write access to approved `DATA_ROOT` directories (or `data/` if Alternative 3 chosen).
 - Validation before writing (schema + cross-reference checks).
 - Cross-reference and mounting compatibility checks (loadout mountId exists in hull, componentId exists in componentDefinitions, etc.).
 - Previewing the proposed changes before applying them (diff view, validation summary).
@@ -806,7 +965,7 @@ Revisit the existing implementation phases to account for correct dependency ord
 | **1. Data-model foundations (already implemented)** | Typed contracts in `src/types/Shipmaker.ts`; `Game` registries (`hullDefinitions`, `componentDefinitions`, `shipLoadouts`); `Ship.init()` canonical hull/loadout path. | — |
 | **2. Lua data format & parser** | Select restricted Lua subset; implement a single shared browser-safe parser and validation core; schema validation against Shipmaker.ts contracts. | Phase 1 |
 | **3. Validation & typed runtime conversion** | Cross-reference validation (hullId, loadoutId, componentId, mountId); conversion to typed runtime records; registration with `Game` registries. | Phase 2 |
-| **4. Dev-server read/write & Save & Apply** | Vite dev middleware/endpoint for `public/data/` (or `data/`); validation before write; atomic write/backup; hot-reload signal; localhost/origin/path security. | Phase 3 |
+| **4. Dev-server read/write & Save & Apply** | Vite dev middleware/endpoint for `DATA_ROOT` (or `data/`); validation before write; atomic write/backup; hot-reload signal; localhost/origin/path security. | Phase 3 |
 | **5. Production build integration** | Node build script: read authoritative Lua → parse/validate (using shared parser/validator core) → emit runtime-ready JSON/TS modules → bundle. | Phase 3 + resolution of production Lua distribution decision (see "Important: Production Distribution of Lua Source") |
 
 ### Shared Data Infrastructure and Build Integration — Clarification
@@ -821,10 +980,10 @@ Revisit the existing implementation phases to account for correct dependency ord
 | Phase | Work | Dependencies |
 |---|---|---|
 | **6. `/shipmaker` workspace & asset library** | Route, editor shell, asset browser using `publicSvgManifest.ts` metadata. | Phase 4 (read) |
-| **7. Hull Editor** | Hardpoints, vents, utility sockets, active module mounts, sprites, exhaust direction; persists to `public/data/hulls/`. | Phase 4 (read/write), Phase 6 |
-| **8. Ship Editor** | Identity, stats, hull/loadout references; persists to `public/data/ships/`. | Phase 4 (read/write), Phase 6 |
-| **9. Component Editor** | Weapons, propulsion, utility, active modules; persists to `public/data/weapons/`, `public/data/modules/`. | Phase 4 (read/write), Phase 6 |
-| **10. Ship Assembly Editor** | Select hull, attach components to mounts, author loadouts; persists to `public/data/loadouts/`. | Phases 7, 8, 9, Phase 4 (read/write) |
+| **7. Hull Editor** | Hardpoints, vents, utility sockets, active module mounts, sprites, exhaust direction; persists to `DATA_ROOT/hulls/`. | Phase 4 (read/write), Phase 6 |
+| **8. Ship Editor** | Identity, stats, hull/loadout references; persists to `DATA_ROOT/ships/`. | Phase 4 (read/write), Phase 6 |
+| **9. Component Editor** | Weapons, propulsion, utility, active modules; persists to `DATA_ROOT/weapons/`, `DATA_ROOT/modules/`. | Phase 4 (read/write), Phase 6 |
+| **10. Ship Assembly Editor** | Select hull, attach components to mounts, author loadouts; persists to `DATA_ROOT/loadouts/`. | Phases 7, 8, 9, Phase 4 (read/write) |
 
 ### Verification
 
@@ -878,7 +1037,7 @@ Do not stage, commit, or push any changes.
 - Turret limits are unwrapped single-turn azimuth intervals; each installation owns its angle, while fixed barrel/muzzle offsets affect bore direction only. No aiming behavior is specified.
 - Visual composition is derived, deterministically ordered, and owned by Ship for display-object lifecycle. Existing movement, player/NPC lifecycle, and ProjectileManager ownership remain unchanged.
 - Public asset-key discovery and validation use generated manifest metadata without requiring BootScene. No additional manager, registry, or loader is proposed.
-- Lua source files live under `public/data/` with separate directories per domain.
+- Lua source files use the **proposed development authoring location** `DATA_ROOT` with separate directories per domain; production distribution decision unresolved (see "Important: Production Distribution of Lua Source").
 - TypeScript loading infrastructure in `src/` parses, validates, and registers Lua definitions.
 - Save & Apply uses a development-only server endpoint with strict path restrictions.
 - Weapon behavior implementations remain TypeScript; Lua references behavior IDs.

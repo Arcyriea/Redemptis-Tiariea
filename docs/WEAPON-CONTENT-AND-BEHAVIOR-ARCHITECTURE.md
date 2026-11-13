@@ -134,10 +134,12 @@ Player control settings are separate from weapon behavior IDs. Future control co
 
 ## Proposed Content Organization
 
-The authoritative Lua source location is `public/data/` (see [SHIPMAKER-ARCHITECTURE-HANDOFF.md](SHIPMAKER-ARCHITECTURE-HANDOFF.md#lua-source-location-and-data-loading-architecture)). One conceptual Lua layout under that root:
+The **proposed** authoritative Lua authoring location during development is `DATA_ROOT` (currently proposed as `public/data/`; see [SHIPMAKER-ARCHITECTURE-HANDOFF.md](SHIPMAKER-ARCHITECTURE-HANDOFF.md#lua-source-location-and-data-loading-architecture)). One conceptual Lua layout under that root:
+
+**Note:** `DATA_ROOT` (currently `public/data/`) is the **proposed development authoring location**, not a final decision. The production distribution decision remains unresolved (see SHIPMAKER-ARCHITECTURE-HANDOFF.md "Important: Production Distribution of Lua Source"). If Alternative 3 is chosen, the authoritative source moves outside `public/` (e.g., `data/` at repo root) and is exposed only via the dev server endpoint. Do not describe `public/data/` as irrevocably settled while alternatives remain open.
 
 ```text
-public/data/
+DATA_ROOT/
 ├── weapons/
 │   ├── common/
 │   ├── human/
@@ -156,7 +158,7 @@ public/data/
         └── arsenal.lua
 ```
 
-The `data/` structure previously shown was illustrative only. The actual authoritative location is `public/data/` with separate domains for weapons, modules, hulls, ships, and loadouts. Faction arsenals reference weapon/module IDs rather than duplicating definitions.
+The production distribution decision remains unresolved (see SHIPMAKER-ARCHITECTURE-HANDOFF.md "Important: Production Distribution of Lua Source"). If Alternative 3 is chosen, the authoritative source moves outside `public/` (e.g., `data/` at repo root) and is exposed only via the dev server endpoint. Do not describe `public/data/` as irrevocably settled while alternatives remain open. Faction arsenals reference weapon/module IDs rather than duplicating definitions.
 
 One conceptual TypeScript layout is:
 
