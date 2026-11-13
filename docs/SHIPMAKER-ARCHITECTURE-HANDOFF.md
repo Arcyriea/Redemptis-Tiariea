@@ -56,7 +56,7 @@ These registries are populated during `Game.loadGameData()` via `ShipDataAdapter
 `ObjectPool.getShipObject(type)` calls `Ship.init(type)` on new and reused ships. `Ship.init()` resolves the ship's blueprint through three distinct paths:
 
 1. **Canonical path (`initCanonicalBlueprint`)**: Resolves a structured `ShipBlueprintDefinition` via `ShipManager` source-key catalogue using `hullId`/`loadoutId`. Builds parts from `HullDefinition`, materializes built-ins (`installationSource: 'built-in'`), installs loadout components by `mountId`. This is the canonical path for all new ships.
-2. **Structured legacy path (`initStructuredLegacyBlueprint`)**: Legacy blueprint with structured data but using `partIndex` to attach components. Translates to the canonical model internally.
+2. **Structured legacy path (`initStructuredLegacyBlueprint`)**: Legacy blueprint with structured data but using `partIndex` to attach components. It **does not** internally convert to the canonical hull/loadout path; it constructs parts with `×5` coordinate scaling and attaches components by `partIndex` directly.
 3. **Legacy tuple path (`initLegacyTuple`)**: Reads a legacy tuple from `Game.shipData`. Parts constructed with `x`/`y` multiplied by five; components initialized against resulting part objects.
 
 The ordinary NPC path is `Game` spawn queue → `ShipManager.createShip()` → `ObjectPool.getShipObject()` → `Ship.init()` → `EntityManager` registration and `Game.shipQueue` insertion. `Game.update()` updates managed ships through `shipQueue`, processes projectile lifecycle, then processes spawn and respawn queues. `processSectorShips()` converts sector ship rows to spawn queue entries; `clearCurrentSector()` clears queues, registries, pools, and managed projectiles.
@@ -84,7 +84,7 @@ When a `ProjectileManager` exists, `Component` prefers `ManagedWeapon`. `Managed
 
 `PlayerCannon` currently has damage `10`, firing mode `ProjectileArcade`, range `400`, cooldown `0.15` seconds, energy cost `5`, projectile speed `600`, and splash radius `0`. `Component.activate()` spends energy and starts cooldown only after successful activation. The `ProjectileSpawnConfig` does not carry weapon range or splash radius, and collision applies direct damage; those tuple values are not currently used to provide range/splash gameplay. The refactor must retain the data values without claiming new behavior for them.
 
-**Compatibility validation happens in `Ship.validateCanonicalMount()` before canonical component installation.** The `shipPart` passed to `Component.init()` carries the mount position and rotation in mount-local coordinates; `Component` does not receive mount identity or validate compatibility.
+**Compatibility validation happens in `Ship.validateCanonicalMount()` before canonical component installation.** The `shipPart` passed to `Component.init()` carries the mount pose (position and rotation) in **ship-local (hull-local)** coordinates. The current `WeaponTransform.resolveWeaponMuzzles()` interprets `ComponentAttachment.position`/`attachmentRotationDeg` in **mount-local** coordinates; `Component` does not receive mount identity or validate compatibility.
 
 ### Entity, Pool, and Modular Hull Boundaries
 
@@ -107,7 +107,7 @@ When a `ProjectileManager` exists, `Component` prefers `ManagedWeapon`. `Managed
 | Built-in components | `builtInComponentId` on all mount types; materialized as fixed `installationSource: 'built-in'` instances in `Ship.initCanonicalBlueprint()`; reserves point; rejects loadout replacement. | IMPLEMENTED (foundations) | Full migration across all hulls. |
 | Thruster vents | `ThrusterVent` typed with position, exhaust direction, `acceptsPropulsionCategories`, restrictions, `builtInComponentId`; validation in `Ship.initCanonicalBlueprint()` checks propulsion category. | IMPLEMENTED (data contracts, mounting checks) | **Data contracts & mounting checks:** complete (category only). **Proposed physical validation:** vent opening dimension checks, `maxComponentDimensions` envelope checks, `maxPropulsionOutput` cap, and dimension validation are not yet implemented. **Proposed visual/gameplay integration:** propulsion movement behavior remains separate work; exhaust visual rotation with ship/vent is metadata only. |
 | Component/hull visuals | `SpriteLayer` typed; `HullDefinition.sprites`, `ComponentDefinition.visuals.fixed/rotating` defined; deterministic 5-key sort order specified. | IMPLEMENTED (data model) | Deterministic sprite composition helper and Ship-owned Phaser display-object lifecycle remain proposed. |
-| Coordinate handling | `WeaponTransform.ts` shared resolution used by both `Weapon.resolveMuzzles()` (fallback `PhysicsProjectile` path) and `ManagedWeapon.fireArcadeProjectile()` (managed projectile path); legacy `×5` scaling occurs once in `Ship.initLegacyTuple()` and `ShipDataAdapter.ingestLegacyData()`. | IMPLEMENTED (shared transform) | Full migration of legacy coordinate paths. |
+| Coordinate handling | `WeaponTransform.ts` shared resolution used by both `Weapon.resolveMuzzles()` (fallback `PhysicsProjectile` path) and `ManagedWeapon.fireArcadeProjectile()` (managed projectile path); legacy `×5` scaling occurs once in `Ship.initLegacyTuple()`, `initStructuredLegacyBlueprint()`, and `ShipDataAdapter.ingestLegacyData()`. | IMPLEMENTED (shared transform) | Full migration of legacy coordinate paths. |
 | Versioned authoring data | No external Lua schema/parser/serializer. | NOT IMPLEMENTED | External Lua parsing, loading, validation, and persistence. |
 | Player/NPC lifecycles | Separate player (scene-owned) and NPC (managed queue) paths work; `Ship.init()` canonical resolution shared. | COMPATIBLE | Preserve boundaries during integration. |
 | Projectile lifecycle | `ProjectileManager` owns pooling, attribution, collision, lifespan, cleanup; `ManagedWeapon` delegates spawn. | COMPATIBLE | Preserve ownership; verify spawn transform integration. |
@@ -266,10 +266,9 @@ export type WeaponOperation = BaseComponentDef['operation'] & {
     firingMode: string;
     damage: number;
     range: number;
-    cooldown: number;
-    energyCost: number;
     projectileSpeed: number;
     splashRadius: number;
+    // cooldown and energyCost inherited from BaseComponentDef['operation']
 };
 
 export interface SpinalWeaponDefinition extends BaseComponentDef {
@@ -318,6 +317,7 @@ export interface PropulsionComponentDefinition extends BaseComponentDef {
     dimensions?: { length: number; width: number; height: number };
     propulsion: { output: number };
     sprites: readonly SpriteLayer[];
+    // operation: { cooldown, energyCost } inherited from BaseComponentDef
 }
 
 export interface UtilityComponentDefinition extends BaseComponentDef {
@@ -326,6 +326,7 @@ export interface UtilityComponentDefinition extends BaseComponentDef {
     attachment: ComponentAttachment;
     dimensions?: { length: number; width: number; height: number };
     sprites: readonly SpriteLayer[];
+    // operation: { cooldown, energyCost } inherited from BaseComponentDef
 }
 
 export type ActiveModuleOperation = BaseComponentDef['operation'] & {
@@ -552,7 +553,11 @@ No propulsion movement is derived from this data during prerequisite refactoring
 
 ### Migration Requirement
 
-**Current runtime compatibility requires mount-local semantics.** The existing `WeaponTransform` tests do **not** verify the proposed target convention. The proposed component-local attachment datum equations describe the intended authoring target; implementing them requires a transform migration in `WeaponTransform.ts` and corresponding test updates. Until that migration is implemented and approved, authoring tools must produce mount-local attachment data for runtime compatibility.
+**Current runtime compatibility requires mount-local semantics.** The existing `WeaponTransform` tests do **not** verify the proposed target convention. The proposed component-local attachment datum equations describe the intended authoring target; implementing them requires a transform migration in `WeaponTransform.ts` and corresponding test updates. Until that migration is implemented and approved:
+
+- **Authoring remains mount-local** — editor tools and Lua definitions must produce mount-local attachment data for runtime compatibility.
+- **No adapter translates between conventions** — the proposed component-local target is a future authoring convention only; it is not currently used at runtime, and no conversion layer exists.
+- **Editor preview must target the current runtime convention** (mount-local attachment) until the `WeaponTransform` migration is approved and implemented.
 
 The Lua authoring and editor-preview sections refer to the intended target convention only when that migration is available. Do not claim that current runtime and future authoring behavior are already identical.
 
@@ -581,7 +586,7 @@ The existing player definition becomes a `ShipBlueprintDefinition` referencing a
 - **Canonical registration: COMPLETE** — `Game.loadGameData()` registers the player `HullDefinition`, `PlayerCannon` `ComponentDefinition`, and player `ShipLoadout` in `Game`'s canonical registries. The player ship is initialized through `Ship.initCanonicalBlueprint()` using `hullId`/`loadoutId` resolution.
 - **Player hull: `sprites: []`** — The registered player hull currently has an empty sprite array. Visual composition has **not** been migrated into hull sprite layers.
 - **PlayerCannon visuals: `fixed: []`** — The registered `PlayerCannon` component has an empty fixed visual layers array.
-- **PlayerCannon muzzles: `[]`** — The registered `PlayerCannon` component has an empty muzzles array. The origin muzzle at fire time is supplied by `WeaponTransform.resolveWeaponMuzzles()` empty-array fallback (`{ position: {0,0}, directionDeg: 0 }`).
+- **PlayerCannon muzzles: `[]`** — The registered `PlayerCannon` component has an empty muzzles array. The origin muzzle at fire time is supplied by `WeaponTransform.resolveWeaponMuzzles()` empty-array fallback (`{ position: {0,0}, directionDeg: 0 }`), **not by an explicitly authored muzzle**.
 - **Visual composition: NOT MIGRATED** — The player's visual composition still uses the legacy path in `main.ts` (scene-owned container synchronized to logical ship). The deterministic sprite composition helper and Ship-owned Phaser display-object lifecycle remain **proposed prerequisite work**, not implemented.
 - **Coordinates are canonical pixels, not legacy ×5** — The canonical `PlayerCannon` definition uses `attachment: { position: { x: 0, y: 0 }, attachmentRotationDeg: 0 }` and `muzzles: []` in **local pixels**. The legacy `×5` scaling occurs exactly once in `Ship.initLegacyTuple()` and `ShipDataAdapter.ingestLegacyData()` for unconverted legacy tuples only. Canonical definitions do not apply the ×5 factor.
 
@@ -840,9 +845,9 @@ Vite normally copies the entire `public/` directory into the production output u
 
 | Alternative | Description | Implications |
 |---|---|---|
-| **Include Lua source in production** | Ship `DATA_ROOT` as-is to production. | Simple; Lua files publicly downloadable and inspectable. Source contents may reveal ship statistics, weapon balance values, and unreleased game content — not merely the authoring structure. No runtime execution risk since the browser does not execute Lua. |
-| **Exclude Lua source from production** | Configure a custom build strategy to omit `DATA_ROOT` while retaining other public assets (e.g., a Vite plugin that filters the public directory copy, or a post-build cleanup step). Vite's `build.copyPublicDir: false` disables copying the entire public directory; it cannot selectively exclude a subdirectory. | Cleaner production bundle; requires custom build config. Source remains only in repo. |
-| **Move authoritative source outside `public/`** | Keep authoritative Lua under e.g. `data/` (repo root) and expose via dev server endpoint only. | Cleanest separation; dev server reads/writes `data/`; production build reads `data/` at build time, never ships source. Requires dev server middleware and build script changes. |
+| **Include Lua source in production** | Ship `public/data/` as-is to production. | Simple; Lua files publicly downloadable and inspectable. Source contents may reveal ship statistics, weapon balance values, and unreleased game content — not merely the authoring structure. No runtime execution risk since the browser does not execute Lua. |
+| **Exclude Lua source from production** | Configure a custom build strategy to omit `public/data/` while retaining other public assets (e.g., a Vite plugin that filters the public directory copy, or a post-build cleanup step). Vite's `build.copyPublicDir: false` disables copying the **entire** public directory; it cannot selectively exclude a subdirectory. This Vite-specific limitation applies only when `DATA_ROOT` is located under `public/`. | Cleaner production bundle; requires custom build config. Source remains only in repo. |
+| **Move authoritative source outside `public/`** | Keep authoritative Lua under e.g. `data/` (repo root) and expose via dev server endpoint only. | Cleanest separation; dev server reads/writes `data/`; production build reads `data/` at build time, never ships source. The `build.copyPublicDir` limitation does not apply because the source is outside `public/`. Requires dev server middleware and build script changes. |
 
 **Do not unilaterally change the proposed source location.** Record the alternatives and their implications here. The decision affects dev server design, build pipeline, and whether production clients can fetch Lua over HTTP.
 
