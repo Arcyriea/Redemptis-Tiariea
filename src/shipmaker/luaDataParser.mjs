@@ -3,11 +3,21 @@ const MAX_NESTING_DEPTH = 128;
 const MAX_TOKENS = 100_000;
 const MAX_AST_NODES = 50_000;
 
+// Lua 5.2/5.3 keywords; only true/false are accepted as value literals.
 const RESERVED_WORDS = new Set([
     'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function',
-    'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true',
-    'until', 'while'
+    'goto', 'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then',
+    'true', 'until', 'while'
 ]);
+
+const LONG_BRACKET_COMMENT_START = /--\[(=*)\[/y;
+const LONG_BRACKET_STRING_START = /\[(=*)\[/y;
+const DECIMAL_NUMBER = /-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?/y;
+
+function matchAt(regex, source, offset) {
+    regex.lastIndex = offset;
+    return regex.exec(source);
+}
 
 class ParseFault extends Error {
     constructor(diagnostic) {
@@ -88,7 +98,7 @@ class Tokenizer {
             }
 
             if (this.source.startsWith('--', this.offset)) {
-                const longComment = /^--\[(=*)\[/.exec(this.source.slice(this.offset));
+                const longComment = matchAt(LONG_BRACKET_COMMENT_START, this.source, this.offset);
                 if (longComment) {
                     const start = this.offset;
                     const end = start + longComment[0].length;
@@ -109,7 +119,7 @@ class Tokenizer {
         const character = this.source[this.offset];
 
         if (character === '[') {
-            const longString = /^\[(=*)\[/.exec(this.source.slice(this.offset));
+            const longString = matchAt(LONG_BRACKET_STRING_START, this.source, this.offset);
             if (longString) {
                 const end = start + longString[0].length;
                 fail('unsupported-long-bracket-string', 'Long-bracket strings are not supported; use a quoted string.', makeSpan(this.lineStarts, start, end));
@@ -187,8 +197,7 @@ class Tokenizer {
 
     readNumber() {
         const start = this.offset;
-        const remaining = this.source.slice(start);
-        const match = /^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?/.exec(remaining);
+        const match = matchAt(DECIMAL_NUMBER, this.source, start);
         if (!match) {
             this.advance();
             fail('invalid-number', 'Invalid decimal number literal.', makeSpan(this.lineStarts, start, this.offset));
@@ -365,11 +374,6 @@ class Parser {
         }
 
         if (token.type === 'punctuation' && token.value === '[') {
-            const longString = /^\[(=*)\[/.exec(this.source.slice(token.start));
-            if (longString) {
-                const end = token.start + longString[0].length;
-                fail('unsupported-long-bracket-string', 'Long-bracket strings are not supported; use a quoted string.', makeSpan(this.lineStarts, token.start, end));
-            }
             const key = this.peek();
             const close = this.tokens[this.index + 2];
             const assign = this.tokens[this.index + 3];

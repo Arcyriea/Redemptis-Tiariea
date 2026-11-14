@@ -115,6 +115,7 @@ test('rejects calls, identifiers as values, expressions, nil, numeric keys, and 
     parseError('return { nil }', 'unsupported-syntax');
     parseError('return { [1] = "x" }', 'unsupported-syntax');
     parseError('return { end = 1 }', 'unsupported-syntax');
+    parseError('return { goto = 1 }', 'unsupported-syntax');
 });
 
 test('rejects long-bracket comments and strings with explicit diagnostics', () => {
